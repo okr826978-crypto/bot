@@ -1,6 +1,10 @@
+import os
 import discord
 from discord.ext import commands
 from datetime import datetime
+from keep_alive import keep_alive  # เรียกใช้ Flask server
+
+keep_alive()  # เริ่ม Flask server เพื่อให้ bot “alive” บน Render
 
 intents = discord.Intents.default()
 intents.members = True
@@ -31,7 +35,6 @@ class MessageModal(discord.ui.Modal, title="ฝากบอกข้อควา
         self.target_member = target_member
 
     async def on_submit(self, interaction: discord.Interaction):
-        # เปิด View ยืนยันก่อนส่ง
         view = ConfirmView(self.user_message.value, self.reveal.value, self.target_member)
         await interaction.response.send_message(
             f"คุณแน่ใจว่าจะส่งข้อความนี้ถึง {self.target_member.mention} หรือไม่?", 
@@ -157,5 +160,4 @@ async def on_ready():
         await channel.send("กดปุ่มเพื่อฝากบอกข้อความ 👇", view=OpenButton())
 
 # ================= Run Bot =================
-bot.run("")
-
+bot.run(os.getenv("TOKEN"))
