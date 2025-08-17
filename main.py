@@ -157,4 +157,5 @@ async def on_ready():
         await channel.send("กดปุ่มเพื่อฝากบอกข้อความ 👇", view=OpenButton())
 
 # ================= Run Bot =================
-bot.run("MTI1OTk4NzEyNjQ5NDMwMjI2OA.GRYPjp.kErUJUZxUKnFFD3xJBScxXJLr1RITpDrHtZi1w")
+bot.run("")
+
