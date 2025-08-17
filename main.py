@@ -1,10 +1,10 @@
 import os
+from keep_alive import keep_alive
 import discord
-from discord.ext import commands
+from discord.ext import commands, tasks
 from datetime import datetime
-from keep_alive import keep_alive  # เรียกใช้ Flask server
 
-keep_alive()  # เริ่ม Flask server เพื่อให้ bot “alive” บน Render
+keep_alive()  # เรียก Flask server
 
 intents = discord.Intents.default()
 intents.members = True
@@ -88,7 +88,7 @@ async def send_message(interaction, user_message, reveal, target_member):
 
     # ส่ง DM
     try:
-        sender_name = interaction.user.display_name if reveal.strip().lower() == "ใช่" else "ไม่เปิดเผยตัวตน"
+        sender_name = interaction.user.display_name if reveal.strip().lower() == 'ใช่' else "ไม่เปิดเผยตัวตน"
         await target_member.send(f"คุณได้รับข้อความจาก {sender_name}:\n\n{user_message}")
     except:
         await interaction.followup.send("⚠️ ไม่สามารถส่ง DM ให้ผู้รับได้", ephemeral=True)
@@ -155,9 +155,14 @@ class OpenButton(discord.ui.View):
 @bot.event
 async def on_ready():
     print(f"✅ Logged in as {bot.user}")
+    await send_button()
+
+# ================= ส่งปุ่มอัตโนมัติ =================
+async def send_button():
+    await bot.wait_until_ready()
     channel = bot.get_channel(BUTTON_CHANNEL_ID)
     if channel:
         await channel.send("กดปุ่มเพื่อฝากบอกข้อความ 👇", view=OpenButton())
 
 # ================= Run Bot =================
-bot.run(os.getenv("TOKEN"))
+bot.run(os.environ["DISCORD_TOKEN"])
