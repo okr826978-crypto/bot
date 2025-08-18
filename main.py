@@ -1,9 +1,9 @@
 import os
-from flask import Flask
 import threading
+from datetime import datetime
+from flask import Flask
 import discord
 from discord.ext import commands
-from datetime import datetime
 
 # ================= Flask สำหรับ Render =================
 app = Flask("")
@@ -24,7 +24,7 @@ intents = discord.Intents.default()
 intents.members = True
 bot = commands.Bot(command_prefix="!", intents=intents)
 
-# ==== CONFIG ====
+# ==== CONFIG ==== (เปลี่ยนตาม server ของคุณ)
 BUTTON_CHANNEL_ID = 1406537337676103742
 TARGET_CHANNEL_ID = 1406537424947122266
 ADMIN_CHANNEL_ID = 1406539787594240041
@@ -76,13 +76,12 @@ class ConfirmView(discord.ui.View):
 
 # ================= ฟังก์ชันส่งข้อความ =================
 async def send_message(interaction, user_message, reveal, target_member):
+    await interaction.response.defer(ephemeral=True)  # ป้องกัน interaction timeout
     guild = interaction.guild
     target_channel = guild.get_channel(TARGET_CHANNEL_ID)
     admin_channel = guild.get_channel(ADMIN_CHANNEL_ID)
 
     public_content = f"**ถึง {target_member.mention}**\n{user_message}"
-
-    await interaction.response.send_message("✅ ฝากบอกสำเร็จ! ส่งเรียบร้อยแล้ว", ephemeral=True)
 
     # ส่ง Webhook
     webhook = None
@@ -105,7 +104,7 @@ async def send_message(interaction, user_message, reveal, target_member):
         sender_name = interaction.user.display_name if reveal.strip().lower() == 'ใช่' else "ไม่เปิดเผยตัวตน"
         await target_member.send(f"คุณได้รับข้อความจาก {sender_name}:\n\n{user_message}")
     except:
-        await interaction.followup.send("⚠️ ไม่สามารถส่ง DM ให้ผู้รับได้", ephemeral=True)
+        pass
 
     # ส่ง Embed แอดมิน
     now = datetime.now().strftime("%d/%m/%Y เวลา %H:%M")
@@ -119,6 +118,9 @@ async def send_message(interaction, user_message, reveal, target_member):
     embed.add_field(name="ข้อความ", value=user_message, inline=False)
     embed.set_footer(text=f"📅 {now}")
     await admin_channel.send(embed=embed)
+
+    # ตอบกลับผู้ส่ง
+    await interaction.followup.send("✅ ฝากบอกสำเร็จ! ส่งเรียบร้อยแล้ว", ephemeral=True)
 
 # ================= Modal ใส่ชื่อผู้รับ =================
 class SearchMemberModal(discord.ui.Modal, title="ค้นหาผู้รับข้อความ"):
