@@ -1,7 +1,7 @@
 import os
 import discord
 from discord.ext import commands
-from discord.ui import Modal, View, TextInput, Select, SelectOption, Button, button
+from discord.ui import Modal, View, TextInput, Select, SelectOption, Button
 from flask import Flask
 import threading
 import requests
@@ -23,7 +23,7 @@ def keep_alive():
 
 # ===================== Ping ตัวเองทุก 5 นาที =====================
 def auto_ping():
-    url = os.environ.get("PING_URL")  # ใส่ลิงค์เว็บ Render ของตัวเอง
+    url = os.environ.get("PING_URL")
     if not url:
         print("❌ PING_URL not set in environment variables")
         return
@@ -36,9 +36,9 @@ def auto_ping():
                 print(f"Pinged {url} - status {r.status_code}")
             except Exception as e:
                 print("Ping failed:", e)
-            time.sleep(300)  # 5 นาที
+            time.sleep(300)
 
-    t = threading.Thread(target=ping_loop)
+    t = threading.Thread(target=ping_loop, daemon=True)
     t.start()
 
 # ===================== Discord Bot =====================
@@ -52,8 +52,8 @@ TARGET_CHANNEL_ID = 1406537424947122266
 ADMIN_CHANNEL_ID = 1406539787594240041
 
 # ================= Modal ฝากข้อความ =================
-class MessageModal(Modal, title="ฝากบอกข้อความ"):
-    user_message = TextInput(label="ข้อความของคุณ", style=discord.TextStyle.paragraph, required=True, placeholder="พิมพ์ข้อความที่อยากบอกผู้รับ")
+class MessageModal(Modal, title="ฝากข้อความ"):
+    user_message = TextInput(label="ข้อความของคุณ", style=discord.TextStyle.paragraph, required=True)
     reveal = TextInput(label="เปิดเผยตัวตน?", style=discord.TextStyle.short, required=True, placeholder="พิมพ์ 'ใช่' หรือ 'ไม่'")
 
     def __init__(self, target_member):
@@ -62,7 +62,7 @@ class MessageModal(Modal, title="ฝากบอกข้อความ"):
 
     async def on_submit(self, interaction: discord.Interaction):
         view = ConfirmView(self.user_message.value, self.reveal.value, self.target_member)
-        await interaction.response.send_message(f"คุณแน่ใจว่าจะส่งข้อความนี้ถึง {self.target_member.mention} หรือไม่?", view=view, ephemeral=True)
+        await interaction.response.send_message(f"คุณแน่ใจที่จะส่งข้อความถึง {self.target_member.mention}?", view=view, ephemeral=True)
 
 # ================= View ยืนยัน =================
 class ConfirmView(View):
@@ -72,12 +72,12 @@ class ConfirmView(View):
         self.reveal_text = reveal_text
         self.target_member = target_member
 
-    @button(label="✅ ใช่", style=discord.ButtonStyle.success)
+    @Button(label="✅ ใช่", style=discord.ButtonStyle.success)
     async def confirm(self, interaction: discord.Interaction, button: Button):
         await send_message(interaction, self.message_text, self.reveal_text, self.target_member)
         self.stop()
 
-    @button(label="❌ ไม่", style=discord.ButtonStyle.danger)
+    @Button(label="❌ ไม่", style=discord.ButtonStyle.danger)
     async def cancel(self, interaction: discord.Interaction, button: Button):
         await interaction.response.send_message("❌ ยกเลิกการส่งข้อความ", ephemeral=True)
         self.stop()
@@ -89,7 +89,7 @@ async def send_message(interaction, user_message, reveal, target_member):
     admin_channel = guild.get_channel(ADMIN_CHANNEL_ID)
 
     public_content = f"**ถึง {target_member.mention}**\n{user_message}"
-    await interaction.response.send_message("✅ ฝากบอกสำเร็จ! ส่งเรียบร้อยแล้ว", ephemeral=True)
+    await interaction.response.send_message("✅ ส่งข้อความเรียบร้อย!", ephemeral=True)
 
     # ส่ง Webhook
     webhook = None
@@ -105,7 +105,7 @@ async def send_message(interaction, user_message, reveal, target_member):
 
     # ส่ง DM
     try:
-        sender_name = interaction.user.display_name if reveal.strip().lower() == 'ใช่' else "ไม่เปิดเผยตัวตน"
+        sender_name = interaction.user.display_name if reveal.strip().lower()=='ใช่' else "ไม่เปิดเผยตัวตน"
         await target_member.send(f"คุณได้รับข้อความจาก {sender_name}:\n\n{user_message}")
     except:
         await interaction.followup.send("⚠️ ไม่สามารถส่ง DM ให้ผู้รับได้", ephemeral=True)
@@ -120,8 +120,8 @@ async def send_message(interaction, user_message, reveal, target_member):
     await admin_channel.send(embed=embed)
 
 # ================= Modal ใส่ชื่อผู้รับ =================
-class SearchMemberModal(Modal, title="ค้นหาผู้รับข้อความ"):
-    search_name = TextInput(label="พิมพ์ชื่อผู้รับ", style=discord.TextStyle.short, required=True, placeholder="พิมพ์ชื่อผู้ใช้หรือ nickname")
+class SearchMemberModal(Modal, title="ค้นหาผู้รับ"):
+    search_name = TextInput(label="ชื่อผู้รับ", style=discord.TextStyle.short, required=True)
 
     async def on_submit(self, interaction: discord.Interaction):
         name_query = self.search_name.value.lower()
@@ -131,7 +131,6 @@ class SearchMemberModal(Modal, title="ค้นหาผู้รับข้อ
             await interaction.response.send_message("❌ ไม่พบผู้ใช้ที่ตรงกัน", ephemeral=True)
             return
 
-        # dropdown 25 คนแรก
         class MemberSelect(Select):
             def __init__(self, members):
                 options = [SelectOption(label=m.display_name[:45], value=str(m.id)) for m in members[:25]]
@@ -147,11 +146,11 @@ class SearchMemberModal(Modal, title="ค้นหาผู้รับข้อ
 
         view = View()
         view.add_item(MemberSelect(matched_members))
-        await interaction.response.send_message("เลือกผู้รับจากผลลัพธ์:", view=view, ephemeral=True)
+        await interaction.response.send_message("เลือกผู้รับ:", view=view, ephemeral=True)
 
 # ================= Button =================
 class OpenButton(View):
-    @button(label="📝 เขียนข้อความ", style=discord.ButtonStyle.primary)
+    @Button(label="📝 เขียนข้อความ", style=discord.ButtonStyle.primary)
     async def open_modal(self, interaction: discord.Interaction, button: Button):
         await interaction.response.send_modal(SearchMemberModal())
 
@@ -165,7 +164,7 @@ async def send_button():
     await bot.wait_until_ready()
     channel = bot.get_channel(BUTTON_CHANNEL_ID)
     if channel:
-        await channel.send("กดปุ่มเพื่อฝากบอกข้อความ 👇", view=OpenButton())
+        await channel.send("กดปุ่มเพื่อฝากข้อความ 👇", view=OpenButton())
 
 # ================= Run Bot =================
 if __name__ == "__main__":
