@@ -40,8 +40,8 @@ class MessageModal(discord.ui.Modal, title="ฝากบอกข้อควา
     reveal = discord.ui.TextInput(
         label="เปิดเผยตัวตน?",
         style=discord.TextStyle.short,
-        required=True,
-        placeholder="พิมพ์ 'ใช่' หรือ 'ไม่'"
+        required=False,
+        placeholder="พิมพ์ 'ใช่' ถ้าอยากเปิดเผย (ถ้าเว้นว่าง = ไม่เปิดเผย)"
     )
 
     def __init__(self, target_member: discord.Member):
@@ -83,15 +83,14 @@ async def send_message(interaction, user_message, reveal, target_member):
 
     # Embed ฝากบอก
     embed = discord.Embed(
-        title=f"📩 มีข้อความฝากบอกถึงคุณ {target_member.display_name}",
-        color=0x1ABC9C
+        title=f"💌 ข้อความถึง {target_member.display_name}",
+        description=user_message,
+        color=0x2ECC71
     )
-    embed.add_field(name="ข้อความ", value=user_message, inline=False)
-    embed.add_field(name="ค่าใช้", value="ไม่มี", inline=False)
     embed.add_field(name="จาก", value=sender_name, inline=False)
     embed.set_footer(text="ฝากบอกโดยระบบ")
 
-    # View ปุ่มตอบกลับ
+    # ปุ่มตอบกลับ
     view = discord.ui.View()
     view.add_item(
         discord.ui.Button(label="💬 ตอบกลับ", style=discord.ButtonStyle.primary, custom_id=f"reply_{interaction.user.id}")
@@ -102,7 +101,7 @@ async def send_message(interaction, user_message, reveal, target_member):
 
     # Embed แอดมิน
     now = datetime.now().strftime("%d/%m/%Y เวลา %H:%M")
-    admin_embed = discord.Embed(title="📩 ข้อความฝากบอกใหม่", color=0x1ABC9C)
+    admin_embed = discord.Embed(title="📩 ข้อความฝากบอกใหม่", color=0x5865F2)
     admin_embed.add_field(name="ผู้ส่ง", value=f"{interaction.user.mention} ({sender_name})", inline=False)
     admin_embed.add_field(name="ผู้รับ", value=f"{target_member.mention} ({target_member.id})", inline=False)
     admin_embed.add_field(name="ข้อความ", value=user_message, inline=False)
@@ -123,7 +122,7 @@ async def on_interaction(interaction: discord.Interaction):
             else:
                 await interaction.response.send_message("❌ ไม่พบผู้ส่ง", ephemeral=True)
 
-# ================= Modal ใส่ชื่อผู้รับ =================
+# ================= Modal ค้นหาผู้รับ =================
 class SearchMemberModal(discord.ui.Modal, title="ค้นหาผู้รับข้อความ"):
     search_name = discord.ui.TextInput(
         label="พิมพ์ชื่อผู้รับ",
@@ -147,7 +146,7 @@ class SearchMemberModal(discord.ui.Modal, title="ค้นหาผู้รั�
                     discord.SelectOption(label=m.display_name[:45], value=str(m.id))
                     for m in members[:25]
                 ]
-                super().__init__(placeholder="เลือกผู้รับ", min_values=1, max_values=1, options=options)
+                super().__init__(placeholder="🟢 เลือกผู้รับ", min_values=1, max_values=1, options=options)
 
             async def callback(self, select_interaction: discord.Interaction):
                 member_id = int(self.values[0])
@@ -163,7 +162,7 @@ class SearchMemberModal(discord.ui.Modal, title="ค้นหาผู้รั�
 
 # ================= Button =================
 class OpenButton(discord.ui.View):
-    @discord.ui.button(label="📝 เขียนข้อความ", style=discord.ButtonStyle.primary)
+    @discord.ui.button(label="📝 เขียนข้อความ", style=discord.ButtonStyle.success)
     async def open_modal(self, interaction: discord.Interaction, button: discord.ui.Button):
         await interaction.response.send_modal(SearchMemberModal())
 
@@ -178,7 +177,13 @@ async def send_button():
     await bot.wait_until_ready()
     channel = bot.get_channel(BUTTON_CHANNEL_ID)
     if channel:
-        await channel.send("กดปุ่มเพื่อฝากบอกข้อความ 👇", view=OpenButton())
+        embed = discord.Embed(
+            title="💌 ฝากบอก",
+            description="อยากบอกอะไรกับใคร กดปุ่มด้านล่างแล้วเริ่มเลย!",
+            color=0x2ECC71
+        )
+        embed.set_image(url="https://cdn.discordapp.com/attachments/1406523355460272208/1406982406258298930/ggt.png?ex=68a471fa&is=68a3207a&hm=fc6df791cddc887bde522e0b02b06750ba90f6d5ecbdbbf5003970189e63da85&")  # <- ใส่ banner ได้
+        await channel.send(embed=embed, view=OpenButton())
 
 # ================= Run Bot =================
 keep_alive()
