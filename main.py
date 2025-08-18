@@ -25,9 +25,9 @@ intents.members = True
 bot = commands.Bot(command_prefix="!", intents=intents)
 
 # ==== CONFIG ====
-BUTTON_CHANNEL_ID = 1406537337676103742
-TARGET_CHANNEL_ID = 1406537424947122266
-ADMIN_CHANNEL_ID = 1406539787594240041
+BUTTON_CHANNEL_ID = 1406537337676103742   # ห้องปุ่มฝากบอก
+TARGET_CHANNEL_ID = 1406537424947122266   # ห้องที่ส่งข้อความไปหาเป้าหมาย
+ADMIN_CHANNEL_ID = 1406539787594240041    # ห้องแอดมิน log
 
 # ================= Modal ฝากข้อความ =================
 class MessageModal(discord.ui.Modal, title="ฝากบอกข้อความ"):
@@ -83,12 +83,11 @@ async def send_message(interaction, user_message, reveal, target_member):
 
     # Embed ฝากบอก
     embed = discord.Embed(
-        title=f"💌 ข้อความถึง {target_member.display_name}",
+        title=f"📩 มีข้อความฝากบอกถึงคุณ {target_member.display_name}",
         description=user_message,
         color=0x2ECC71
     )
     embed.add_field(name="จาก", value=sender_name, inline=False)
-    embed.set_footer(text="ฝากบอกโดยระบบ")
 
     # ปุ่มตอบกลับ
     view = discord.ui.View()
@@ -99,8 +98,8 @@ async def send_message(interaction, user_message, reveal, target_member):
     # ส่งไปยัง target
     await target_channel.send(content=f"{target_member.mention}", embed=embed, view=view)
 
-    # Embed แอดมิน
-    now = datetime.now().strftime("%d/%m/%Y เวลา %H:%M")
+    # Log แอดมิน
+    now = datetime.now().strftime("%d/%m/%Y %H:%M")
     admin_embed = discord.Embed(title="📩 ข้อความฝากบอกใหม่", color=0x5865F2)
     admin_embed.add_field(name="ผู้ส่ง", value=f"{interaction.user.mention} ({sender_name})", inline=False)
     admin_embed.add_field(name="ผู้รับ", value=f"{target_member.mention} ({target_member.id})", inline=False)
@@ -179,10 +178,10 @@ async def send_button():
     if channel:
         embed = discord.Embed(
             title="💌 ฝากบอก",
-            description="อยากบอกอะไรกับใคร กดปุ่มด้านล่างแล้วเริ่มเลย!",
+            description="แอบมีอะไรอยุ่ในใจ อยากบอกใคร ลองกดปุ่มด้านล่างดูสิ 💌",
             color=0x2ECC71
         )
-        embed.set_image(url="https://cdn.discordapp.com/attachments/1406523355460272208/1406982406258298930/ggt.png?ex=68a471fa&is=68a3207a&hm=fc6df791cddc887bde522e0b02b06750ba90f6d5ecbdbbf5003970189e63da85&")  # <- ใส่ banner ได้
+        embed.set_image(url="https://cdn.discordapp.com/attachments/1406523355460272208/1406982406258298930/ggt.png")  
         await channel.send(embed=embed, view=OpenButton())
 
 # ================= Run Bot =================
