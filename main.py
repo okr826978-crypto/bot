@@ -1,11 +1,26 @@
 import os
-from keep_alive import keep_alive
 import discord
 from discord.ext import commands, tasks
 from datetime import datetime
+from flask import Flask
+from threading import Thread
 
-keep_alive()  # เรียก Flask server
+# ================= Flask server =================
+app = Flask('')
 
+@app.route('/')
+def home():
+    return "Bot is running!"
+
+def run():
+    port = int(os.environ.get("PORT", 8080))
+    app.run(host='0.0.0.0', port=port)
+
+# รัน Flask server ใน Thread แยก
+t = Thread(target=run)
+t.start()
+
+# ================= Discord Bot =================
 intents = discord.Intents.default()
 intents.members = True
 bot = commands.Bot(command_prefix="!", intents=intents)
@@ -124,7 +139,6 @@ class SearchMemberModal(discord.ui.Modal, title="ค้นหาผู้รั�
             await interaction.response.send_message("❌ ไม่พบผู้ใช้ที่ตรงกัน", ephemeral=True)
             return
 
-        # dropdown 25 คนแรก
         class MemberSelect(discord.ui.Select):
             def __init__(self, members):
                 options = [
