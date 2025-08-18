@@ -1,84 +1,76 @@
 import os
-import discord
-from discord.ext import commands
-from discord.ui import Modal, View, TextInput, Select, SelectOption, Button
 from flask import Flask
 import threading
-import requests
+import discord
+from discord.ext import commands
 from datetime import datetime
 
-# ===================== Flask Keep-Alive =====================
+# ================= Flask สำหรับ Render =================
 app = Flask("")
 
 @app.route("/")
 def home():
-    return "Bot is alive 🎉"
+    return "Bot is running!"
 
-def run_flask():
+def run():
     app.run(host="0.0.0.0", port=int(os.environ.get("PORT", 10000)))
 
 def keep_alive():
-    t = threading.Thread(target=run_flask)
+    t = threading.Thread(target=run)
     t.start()
 
-# ===================== Ping ตัวเองทุก 5 นาที =====================
-def auto_ping():
-    url = os.environ.get("PING_URL")
-    if not url:
-        print("❌ PING_URL not set in environment variables")
-        return
-
-    def ping_loop():
-        import time
-        while True:
-            try:
-                r = requests.get(url)
-                print(f"Pinged {url} - status {r.status_code}")
-            except Exception as e:
-                print("Ping failed:", e)
-            time.sleep(300)
-
-    t = threading.Thread(target=ping_loop, daemon=True)
-    t.start()
-
-# ===================== Discord Bot =====================
+# ================= Discord Bot =================
 intents = discord.Intents.default()
 intents.members = True
 bot = commands.Bot(command_prefix="!", intents=intents)
 
-# ==== CONFIG ==== (แก้ตามเซิฟจริง)
+# ==== CONFIG ====
 BUTTON_CHANNEL_ID = 1406537337676103742
 TARGET_CHANNEL_ID = 1406537424947122266
 ADMIN_CHANNEL_ID = 1406539787594240041
 
 # ================= Modal ฝากข้อความ =================
-class MessageModal(Modal, title="ฝากข้อความ"):
-    user_message = TextInput(label="ข้อความของคุณ", style=discord.TextStyle.paragraph, required=True)
-    reveal = TextInput(label="เปิดเผยตัวตน?", style=discord.TextStyle.short, required=True, placeholder="พิมพ์ 'ใช่' หรือ 'ไม่'")
+class MessageModal(discord.ui.Modal, title="ฝากบอกข้อความ"):
+    user_message = discord.ui.TextInput(
+        label="ข้อความของคุณ",
+        style=discord.TextStyle.paragraph,
+        required=True,
+        placeholder="พิมพ์ข้อความที่อยากบอกผู้รับ (คิดดีๆ ก่อนพิมพ์!)"
+    )
+    reveal = discord.ui.TextInput(
+        label="เปิดเผยตัวตน?",
+        style=discord.TextStyle.short,
+        required=True,
+        placeholder="พิมพ์ 'ใช่' ถ้าอยากแสดงชื่อ, 'ไม่' ถ้าไม่ต้องการ"
+    )
 
-    def __init__(self, target_member):
+    def __init__(self, target_member: discord.Member):
         super().__init__()
         self.target_member = target_member
 
     async def on_submit(self, interaction: discord.Interaction):
         view = ConfirmView(self.user_message.value, self.reveal.value, self.target_member)
-        await interaction.response.send_message(f"คุณแน่ใจที่จะส่งข้อความถึง {self.target_member.mention}?", view=view, ephemeral=True)
+        await interaction.response.send_message(
+            f"คุณแน่ใจว่าจะส่งข้อความนี้ถึง {self.target_member.mention} หรือไม่?", 
+            view=view,
+            ephemeral=True
+        )
 
 # ================= View ยืนยัน =================
-class ConfirmView(View):
+class ConfirmView(discord.ui.View):
     def __init__(self, message_text, reveal_text, target_member):
         super().__init__(timeout=60)
         self.message_text = message_text
         self.reveal_text = reveal_text
         self.target_member = target_member
 
-    @Button(label="✅ ใช่", style=discord.ButtonStyle.success)
-    async def confirm(self, interaction: discord.Interaction, button: Button):
+    @discord.ui.button(label="✅ ใช่", style=discord.ButtonStyle.success)
+    async def confirm(self, interaction: discord.Interaction, button: discord.ui.Button):
         await send_message(interaction, self.message_text, self.reveal_text, self.target_member)
         self.stop()
 
-    @Button(label="❌ ไม่", style=discord.ButtonStyle.danger)
-    async def cancel(self, interaction: discord.Interaction, button: Button):
+    @discord.ui.button(label="❌ ไม่", style=discord.ButtonStyle.danger)
+    async def cancel(self, interaction: discord.Interaction, button: discord.ui.Button):
         await interaction.response.send_message("❌ ยกเลิกการส่งข้อความ", ephemeral=True)
         self.stop()
 
@@ -89,15 +81,20 @@ async def send_message(interaction, user_message, reveal, target_member):
     admin_channel = guild.get_channel(ADMIN_CHANNEL_ID)
 
     public_content = f"**ถึง {target_member.mention}**\n{user_message}"
-    await interaction.response.send_message("✅ ส่งข้อความเรียบร้อย!", ephemeral=True)
+
+    await interaction.response.send_message("✅ ฝากบอกสำเร็จ! ส่งเรียบร้อยแล้ว", ephemeral=True)
 
     # ส่ง Webhook
     webhook = None
     try:
         if reveal.strip().lower() == "ใช่":
-            webhook = await target_channel.create_webhook(name=interaction.user.display_name, avatar=await interaction.user.display_avatar.read())
+            webhook = await target_channel.create_webhook(
+                name=interaction.user.display_name,
+                avatar=await interaction.user.display_avatar.read()
+            )
         else:
             webhook = await target_channel.create_webhook(name="???")
+
         await webhook.send(public_content)
     finally:
         if webhook:
@@ -105,7 +102,7 @@ async def send_message(interaction, user_message, reveal, target_member):
 
     # ส่ง DM
     try:
-        sender_name = interaction.user.display_name if reveal.strip().lower()=='ใช่' else "ไม่เปิดเผยตัวตน"
+        sender_name = interaction.user.display_name if reveal.strip().lower() == 'ใช่' else "ไม่เปิดเผยตัวตน"
         await target_member.send(f"คุณได้รับข้อความจาก {sender_name}:\n\n{user_message}")
     except:
         await interaction.followup.send("⚠️ ไม่สามารถส่ง DM ให้ผู้รับได้", ephemeral=True)
@@ -113,27 +110,41 @@ async def send_message(interaction, user_message, reveal, target_member):
     # ส่ง Embed แอดมิน
     now = datetime.now().strftime("%d/%m/%Y เวลา %H:%M")
     embed = discord.Embed(title="📩 ข้อความฝากบอกใหม่", color=0x1ABC9C)
-    embed.add_field(name="ผู้ส่ง", value=f"{interaction.user.mention} ({'เปิดเผย' if reveal.strip().lower()=='ใช่' else 'ไม่เปิดเผย'})", inline=False)
+    embed.add_field(
+        name="ผู้ส่ง", 
+        value=f"{interaction.user.mention} ({'เปิดเผย' if reveal.strip().lower() == 'ใช่' else 'ไม่เปิดเผย'})",
+        inline=False
+    )
     embed.add_field(name="ผู้รับ", value=f"{target_member.mention} ({target_member.id})", inline=False)
     embed.add_field(name="ข้อความ", value=user_message, inline=False)
     embed.set_footer(text=f"📅 {now}")
     await admin_channel.send(embed=embed)
 
 # ================= Modal ใส่ชื่อผู้รับ =================
-class SearchMemberModal(Modal, title="ค้นหาผู้รับ"):
-    search_name = TextInput(label="ชื่อผู้รับ", style=discord.TextStyle.short, required=True)
+class SearchMemberModal(discord.ui.Modal, title="ค้นหาผู้รับข้อความ"):
+    search_name = discord.ui.TextInput(
+        label="พิมพ์ชื่อผู้รับ",
+        style=discord.TextStyle.short,
+        required=True,
+        placeholder="พิมพ์ชื่อผู้ใช้หรือ nickname"
+    )
 
     async def on_submit(self, interaction: discord.Interaction):
         name_query = self.search_name.value.lower()
         guild = interaction.guild
         matched_members = [m for m in guild.members if not m.bot and (name_query in m.display_name.lower() or name_query in m.name.lower())]
+
         if not matched_members:
             await interaction.response.send_message("❌ ไม่พบผู้ใช้ที่ตรงกัน", ephemeral=True)
             return
 
-        class MemberSelect(Select):
+        # dropdown 25 คนแรก
+        class MemberSelect(discord.ui.Select):
             def __init__(self, members):
-                options = [SelectOption(label=m.display_name[:45], value=str(m.id)) for m in members[:25]]
+                options = [
+                    discord.SelectOption(label=m.display_name[:45], value=str(m.id))
+                    for m in members[:25]
+                ]
                 super().__init__(placeholder="เลือกผู้รับ", min_values=1, max_values=1, options=options)
 
             async def callback(self, select_interaction: discord.Interaction):
@@ -144,14 +155,14 @@ class SearchMemberModal(Modal, title="ค้นหาผู้รับ"):
                     return
                 await select_interaction.response.send_modal(MessageModal(target_member))
 
-        view = View()
+        view = discord.ui.View()
         view.add_item(MemberSelect(matched_members))
-        await interaction.response.send_message("เลือกผู้รับ:", view=view, ephemeral=True)
+        await interaction.response.send_message("เลือกผู้รับจากผลลัพธ์:", view=view, ephemeral=True)
 
 # ================= Button =================
-class OpenButton(View):
-    @Button(label="📝 เขียนข้อความ", style=discord.ButtonStyle.primary)
-    async def open_modal(self, interaction: discord.Interaction, button: Button):
+class OpenButton(discord.ui.View):
+    @discord.ui.button(label="📝 เขียนข้อความ", style=discord.ButtonStyle.primary)
+    async def open_modal(self, interaction: discord.Interaction, button: discord.ui.Button):
         await interaction.response.send_modal(SearchMemberModal())
 
 # ================= Bot Events =================
@@ -160,14 +171,13 @@ async def on_ready():
     print(f"✅ Logged in as {bot.user}")
     await send_button()
 
+# ================= ส่งปุ่มอัตโนมัติ =================
 async def send_button():
     await bot.wait_until_ready()
     channel = bot.get_channel(BUTTON_CHANNEL_ID)
     if channel:
-        await channel.send("กดปุ่มเพื่อฝากข้อความ 👇", view=OpenButton())
+        await channel.send("กดปุ่มเพื่อฝากบอกข้อความ 👇", view=OpenButton())
 
 # ================= Run Bot =================
-if __name__ == "__main__":
-    keep_alive()
-    auto_ping()
-    bot.run(os.environ["DISCORD_TOKEN"])
+keep_alive()
+bot.run(os.environ["DISCORD_TOKEN"])
