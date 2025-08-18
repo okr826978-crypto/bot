@@ -50,7 +50,8 @@ class MessageModal(discord.ui.Modal, title="ฝากบอกข้อควา
 
     async def on_submit(self, interaction: discord.Interaction):
         view = ConfirmView(self.user_message.value, self.reveal.value, self.target_member)
-        await interaction.response.send_message(
+        await interaction.response.defer(ephemeral=True)
+        await interaction.followup.send(
             f"คุณแน่ใจว่าจะส่งข้อความนี้ถึง {self.target_member.mention} หรือไม่?", 
             view=view,
             ephemeral=True
@@ -76,7 +77,7 @@ class ConfirmView(discord.ui.View):
 
 # ================= ฟังก์ชันส่งข้อความ =================
 async def send_message(interaction, user_message, reveal, target_member):
-    await interaction.response.defer(ephemeral=True)  # ป้องกัน interaction timeout
+    await interaction.response.defer(ephemeral=True)
     guild = interaction.guild
     target_channel = guild.get_channel(TARGET_CHANNEL_ID)
     admin_channel = guild.get_channel(ADMIN_CHANNEL_ID)
@@ -132,12 +133,13 @@ class SearchMemberModal(discord.ui.Modal, title="ค้นหาผู้รั�
     )
 
     async def on_submit(self, interaction: discord.Interaction):
+        await interaction.response.defer(ephemeral=True)
         name_query = self.search_name.value.lower()
         guild = interaction.guild
         matched_members = [m for m in guild.members if not m.bot and (name_query in m.display_name.lower() or name_query in m.name.lower())]
 
         if not matched_members:
-            await interaction.response.send_message("❌ ไม่พบผู้ใช้ที่ตรงกัน", ephemeral=True)
+            await interaction.followup.send("❌ ไม่พบผู้ใช้ที่ตรงกัน", ephemeral=True)
             return
 
         # dropdown 25 คนแรก
@@ -150,16 +152,17 @@ class SearchMemberModal(discord.ui.Modal, title="ค้นหาผู้รั�
                 super().__init__(placeholder="เลือกผู้รับ", min_values=1, max_values=1, options=options)
 
             async def callback(self, select_interaction: discord.Interaction):
+                await select_interaction.response.defer(ephemeral=True)
                 member_id = int(self.values[0])
                 target_member = guild.get_member(member_id)
                 if not target_member:
-                    await select_interaction.response.send_message("❌ ไม่พบผู้รับ", ephemeral=True)
+                    await select_interaction.followup.send("❌ ไม่พบผู้รับ", ephemeral=True)
                     return
-                await select_interaction.response.send_modal(MessageModal(target_member))
+                await select_interaction.followup.send_modal(MessageModal(target_member))
 
         view = discord.ui.View()
         view.add_item(MemberSelect(matched_members))
-        await interaction.response.send_message("เลือกผู้รับจากผลลัพธ์:", view=view, ephemeral=True)
+        await interaction.followup.send("เลือกผู้รับจากผลลัพธ์:", view=view, ephemeral=True)
 
 # ================= Button =================
 class OpenButton(discord.ui.View):
