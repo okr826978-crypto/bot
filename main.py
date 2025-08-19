@@ -7,9 +7,9 @@ from aiohttp import web
 
 # ================= CONFIG =================
 TOKEN = os.environ.get("DISCORD_TOKEN")
-TARGET_CHANNEL_ID = 123456789012345678  # ห้องฝากบอก
-ADMIN_CHANNEL_ID = 123456789012345678   # ห้อง log แอดมิน
-GUIDE_CHANNEL_ID = 123456789012345678   # ห้องคู่มือ
+TARGET_CHANNEL_ID = 1406537424947122266  # ห้องฝากบอก
+ADMIN_CHANNEL_ID = 1406539787594240041   # ห้อง log แอดมิน
+GUIDE_CHANNEL_ID = 1406537337676103742   # ห้องคู่มือ
 PORT = int(os.environ.get("PORT", 8000))  # Render จะกำหนด PORT ให้
 
 intents = discord.Intents.default()
@@ -35,14 +35,14 @@ async def send_crash_log(error_msg):
     await bot.wait_until_ready()
     admin_channel = bot.get_channel(ADMIN_CHANNEL_ID)
     if admin_channel:
-        embed = discord.Embed(title="💥 Bot Crash/Error", description=error_msg, color=0xE74C3C)
+        embed = discord.Embed(title="💥 Bot เกิดข้อผิดพลาด", description=error_msg, color=0xE74C3C)
         embed.set_footer(text=f"📅 {datetime.now().strftime('%d/%m/%Y เวลา %H:%M')}")
         await admin_channel.send(embed=embed)
 
 # ================= Choices ENUM =================
 class RevealChoice(discord.Enum):
-    yes = "เปิดเผยตัวตน"
-    no = "ไม่เปิดเผยตัวตน"
+    เปิดเผยตัวตน = "yes"
+    ไม่เปิดเผยตัวตน = "no"
 
 # ================= ฝากบอก Command =================
 @tree.command(name="ฝากบอก", description="ฝากข้อความถึงใครบางคน")
@@ -60,24 +60,24 @@ async def send_message(
         admin_channel = guild.get_channel(ADMIN_CHANNEL_ID)
 
         # ส่งเข้าห้องฝากบอก
-        await target_channel.send(f"**ถึง {user.mention}**\n{message}")
+        await target_channel.send(f"💌 **ข้อความถึง {user.mention}**\n\n{message}")
 
         # ส่ง DM
         try:
-            sender_name = interaction.user.display_name if reveal == RevealChoice.yes else "ไม่เปิดเผยตัวตน"
-            await user.send(f"คุณได้รับข้อความจาก {sender_name}:\n\n{message}")
+            sender_name = interaction.user.display_name if reveal.value == "yes" else "ไม่เปิดเผยตัวตน"
+            await user.send(f"💌 คุณได้รับข้อความจาก {sender_name}:\n\n{message}")
         except:
             pass
 
         # Log แอดมิน
-        embed = discord.Embed(title="📩 ข้อความฝากบอกใหม่", color=0x1ABC9C)
-        embed.add_field(name="ผู้ส่ง", value=f"{interaction.user.mention} ({'เปิดเผย' if reveal == RevealChoice.yes else 'ไม่เปิดเผย'})", inline=False)
+        embed = discord.Embed(title="📩 มีข้อความฝากบอกใหม่", color=0x1ABC9C)
+        embed.add_field(name="ผู้ส่ง", value=f"{interaction.user.mention} ({'เปิดเผยตัวตน' if reveal.value == 'yes' else 'ไม่เปิดเผยตัวตน'})", inline=False)
         embed.add_field(name="ผู้รับ", value=f"{user.mention} ({user.id})", inline=False)
         embed.add_field(name="ข้อความ", value=message, inline=False)
         embed.set_footer(text=f"📅 {datetime.now().strftime('%d/%m/%Y เวลา %H:%M')}")
         await admin_channel.send(embed=embed)
 
-        await interaction.followup.send("✅ ฝากบอกสำเร็จ! ข้อความถูกส่งแล้ว", ephemeral=True)
+        await interaction.followup.send("✅ ส่งข้อความฝากบอกเรียบร้อยแล้ว!", ephemeral=True)
 
     except Exception as e:
         await send_crash_log(str(e))
@@ -94,12 +94,11 @@ async def on_ready():
 
 # ================= WEB SERVER =================
 async def handle(request):
-    return web.Response(text="Bot is alive ✅")
+    return web.Response(text="Bot is online ✅")
 
 app = web.Application()
 app.add_routes([web.get('/', handle)])
 
-# Run web server in background
 async def start_web_server():
     runner = web.AppRunner(app)
     await runner.setup()
