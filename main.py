@@ -4,12 +4,15 @@ from discord import app_commands
 from datetime import datetime
 import asyncio
 from aiohttp import web
+import traceback
 
 # ================= CONFIG =================
 TOKEN = os.environ["DISCORD_TOKEN"]
+GUILD_ID = 1407172158223814676         # ใส่ Guild ของคุณ
 TARGET_CHANNEL_ID = 123456789012345678
 ADMIN_CHANNEL_ID = 123456789012345678
 GUIDE_CHANNEL_ID = 1406537337676103742
+CRASH_LOG_CHANNEL_NAME = "bot-crash-log"
 
 intents = discord.Intents.default()
 intents.members = True
@@ -62,6 +65,15 @@ async def on_ready():
     await tree.sync()
     print(f"✅ Logged in as {bot.user}")
 
+    # สร้างห้อง Crash Log ถ้ายังไม่มี
+    guild = bot.get_guild(GUILD_ID)
+    global crash_channel
+    crash_channel = discord.utils.get(guild.text_channels, name=CRASH_LOG_CHANNEL_NAME)
+    if crash_channel is None:
+        crash_channel = await guild.create_text_channel(CRASH_LOG_CHANNEL_NAME)
+        print(f"🆕 สร้างห้อง {CRASH_LOG_CHANNEL_NAME} สำหรับ Crash Log")
+
+    # ส่งคู่มือคำสั่งฝากบอก
     guide_channel = bot.get_channel(GUIDE_CHANNEL_ID)
     if guide_channel:
         embed = discord.Embed(
@@ -87,9 +99,41 @@ async def start_webserver():
     await site.start()
     print("🌐 Web server running for keep-alive")
 
-# ================= Run Bot =================
+# ================= Ping ตัวเองทุก 5 นาที =================
+async def self_ping():
+    import aiohttp
+    while True:
+        try:
+            url = f"http://{os.environ.get('RENDER_INTERNAL_HOST', 'localhost')}:{os.environ.get('PORT', 3000)}"
+            async with aiohttp.ClientSession() as session:
+                await session.get(url)
+                print("🏓 Self ping sent")
+        except:
+            pass
+        await asyncio.sleep(300)  # 5 นาที
+
+# ================= Main Loop with Auto Restart & Crash Log =================
 async def main():
     await start_webserver()
-    await bot.start(TOKEN)
+    asyncio.create_task(self_ping())
+
+    while True:
+        try:
+            await bot.start(TOKEN)
+        except Exception:
+            print("❌ Bot crashed! Restarting...")
+            traceback.print_exc()
+            try:
+                if bot.is_ready():
+                    now = datetime.now().strftime("%d/%m/%Y %H:%M:%S")
+                    embed = discord.Embed(
+                        title="❌ Bot Crash Alert",
+                        description=f"เวลา: {now}\nเกิดข้อผิดพลาด:\n```{traceback.format_exc()}```",
+                        color=0xE74C3C
+                    )
+                    await crash_channel.send(embed=embed)
+            except:
+                pass
+            await asyncio.sleep(5)  # รอ 5 วิ ก่อน restart
 
 asyncio.run(main())
