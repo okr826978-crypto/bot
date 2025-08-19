@@ -1,139 +1,122 @@
 import os
 import discord
+from discord.ext import tasks
 from discord import app_commands
 from datetime import datetime
-import asyncio
+import aiohttp
 from aiohttp import web
-import traceback
+import asyncio
 
 # ================= CONFIG =================
-TOKEN = os.environ["DISCORD_TOKEN"]
-GUILD_ID = 1407172158223814676         # ใส่ Guild ของคุณ
-TARGET_CHANNEL_ID = 123456789012345678
-ADMIN_CHANNEL_ID = 123456789012345678
-GUIDE_CHANNEL_ID = 1406537337676103742
-CRASH_LOG_CHANNEL_NAME = "bot-crash-log"
+TOKEN = os.environ.get("DISCORD_TOKEN")  # ใส่ Token ของคุณ
+TARGET_CHANNEL_ID = 123456789012345678   # ห้องฝากบอก
+ADMIN_CHANNEL_ID = 123456789012345678    # ห้อง log แอดมิน
+GUIDE_CHANNEL_ID = 123456789012345678    # ห้องคู่มือ
 
 intents = discord.Intents.default()
 intents.members = True
-intents.message_content = True
 bot = discord.Client(intents=intents)
 tree = app_commands.CommandTree(bot)
 
-# ================= Choices =================
-REVEAL_CHOICES = [
-    app_commands.Choice(name="ใช่ (เปิดเผยชื่อ)", value="yes"),
-    app_commands.Choice(name="ไม่ (ไม่เปิดเผยชื่อ)", value="no"),
-]
+PING_PORT = int(os.environ.get("PORT", 8000))  # Render จะส่งพอร์ตมา
+PING_URL = os.environ.get("PING_URL")          # ใส่ URL ตัวเองถ้าอยากใช้ ping
 
-# ================= ฝากบอก Command =================
-@tree.command(name="ฝากบอก", description="ฝากข้อความถึงใครบางคน")
-@app_commands.describe(user="ผู้รับข้อความ", message="ข้อความของคุณ", reveal="เปิดเผยชื่อหรือไม่")
-@app_commands.choices(reveal=REVEAL_CHOICES)
-async def send_message(interaction: discord.Interaction, user: discord.Member, message: str, reveal: app_commands.Choice[str]):
-    await interaction.response.defer(ephemeral=True)
-
-    guild = interaction.guild
-    target_channel = guild.get_channel(TARGET_CHANNEL_ID)
-    admin_channel = guild.get_channel(ADMIN_CHANNEL_ID)
-
-    await target_channel.send(f"**ถึง {user.mention}**\n{message}")
-
-    try:
-        sender_name = interaction.user.display_name if reveal.value == "yes" else "ไม่เปิดเผยตัวตน"
-        await user.send(f"คุณได้รับข้อความจาก {sender_name}:\n\n{message}")
-    except:
-        pass
-
-    now = datetime.now().strftime("%d/%m/%Y เวลา %H:%M")
-    embed = discord.Embed(title="📩 ข้อความฝากบอกใหม่", color=0x1ABC9C)
-    embed.add_field(
-        name="ผู้ส่ง",
-        value=f"{interaction.user.mention} ({'เปิดเผย' if reveal.value == 'yes' else 'ไม่เปิดเผย'})",
-        inline=False
-    )
-    embed.add_field(name="ผู้รับ", value=f"{user.mention} ({user.id})", inline=False)
-    embed.add_field(name="ข้อความ", value=message, inline=False)
-    embed.set_footer(text=f"📅 {now}")
-    await admin_channel.send(embed=embed)
-
-    await interaction.followup.send("✅ ฝากบอกสำเร็จ! ข้อความถูกส่งแล้ว", ephemeral=True)
-
-# ================= Bot Events =================
-@bot.event
-async def on_ready():
-    await tree.sync()
-    print(f"✅ Logged in as {bot.user}")
-
-    # สร้างห้อง Crash Log ถ้ายังไม่มี
-    guild = bot.get_guild(GUILD_ID)
-    global crash_channel
-    crash_channel = discord.utils.get(guild.text_channels, name=CRASH_LOG_CHANNEL_NAME)
-    if crash_channel is None:
-        crash_channel = await guild.create_text_channel(CRASH_LOG_CHANNEL_NAME)
-        print(f"🆕 สร้างห้อง {CRASH_LOG_CHANNEL_NAME} สำหรับ Crash Log")
-
-    # ส่งคู่มือคำสั่งฝากบอก
+# ================= HELP / GUIDE =================
+async def send_guide():
+    await bot.wait_until_ready()
     guide_channel = bot.get_channel(GUIDE_CHANNEL_ID)
     if guide_channel:
         embed = discord.Embed(
             title="📌 วิธีใช้คำสั่งฝากบอก",
-            description="ใช้คำสั่ง:\n\n`/ฝากบอก user:@ชื่อ message:ข้อความ reveal:(เลือกได้)`\n\n"
-                        "🔹 ตัวอย่าง: `/ฝากบอก @Jojo วันนี้เจอกันหน่อย reveal:ไม่`",
+            description="ใช้คำสั่ง:\n`/ฝากบอก user:@ชื่อ message:ข้อความ reveal:(เลือกได้)`",
             color=0x5865F2
         )
         embed.set_footer(text="ระบบฝากบอกอัตโนมัติ")
         await guide_channel.send(embed=embed)
 
-# ================= Keep-Alive Web Server =================
+# ================= CRASH LOG =================
+async def send_crash_log(error_msg):
+    await bot.wait_until_ready()
+    admin_channel = bot.get_channel(ADMIN_CHANNEL_ID)
+    if admin_channel:
+        embed = discord.Embed(title="💥 Bot Crash/Error", description=error_msg, color=0xE74C3C)
+        embed.set_footer(text=f"📅 {datetime.now().strftime('%d/%m/%Y เวลา %H:%M')}")
+        await admin_channel.send(embed=embed)
+
+# ================= KEEP ALIVE =================
+@tasks.loop(minutes=5)
+async def ping_self():
+    if PING_URL:
+        try:
+            async with aiohttp.ClientSession() as session:
+                await session.get(PING_URL)
+        except:
+            pass
+
+# ================= ฝากบอก Command =================
+@tree.command(name="ฝากบอก", description="ฝากข้อความถึงใครบางคน")
+async def send_message(interaction: discord.Interaction, user: discord.Member, message: str, reveal: app_commands.Choice[str]):
+    try:
+        await interaction.response.defer(ephemeral=True)
+        guild = interaction.guild
+        target_channel = guild.get_channel(TARGET_CHANNEL_ID)
+        admin_channel = guild.get_channel(ADMIN_CHANNEL_ID)
+
+        await target_channel.send(f"**ถึง {user.mention}**\n{message}")
+
+        # ส่ง DM
+        try:
+            sender_name = interaction.user.display_name if reveal.value == "yes" else "ไม่เปิดเผยตัวตน"
+            await user.send(f"คุณได้รับข้อความจาก {sender_name}:\n\n{message}")
+        except:
+            pass
+
+        # Log แอดมิน
+        embed = discord.Embed(title="📩 ข้อความฝากบอกใหม่", color=0x1ABC9C)
+        embed.add_field(name="ผู้ส่ง", value=f"{interaction.user.mention} ({'เปิดเผย' if reveal.value=='yes' else 'ไม่เปิดเผย'})", inline=False)
+        embed.add_field(name="ผู้รับ", value=f"{user.mention} ({user.id})", inline=False)
+        embed.add_field(name="ข้อความ", value=message, inline=False)
+        embed.set_footer(text=f"📅 {datetime.now().strftime('%d/%m/%Y เวลา %H:%M')}")
+        await admin_channel.send(embed=embed)
+
+        await interaction.followup.send("✅ ฝากบอกสำเร็จ! ข้อความถูกส่งแล้ว", ephemeral=True)
+    except Exception as e:
+        await send_crash_log(str(e))
+
+@send_message.autocomplete("reveal")
+async def reveal_autocomplete(interaction: discord.Interaction, current: str):
+    choices = [
+        app_commands.Choice(name="ใช่ (เปิดเผยชื่อ)", value="yes"),
+        app_commands.Choice(name="ไม่ (ไม่เปิดเผยชื่อ)", value="no"),
+    ]
+    return [c for c in choices if current.lower() in c.name.lower()]
+
+# ================= Bot Events =================
+@bot.event
+async def on_ready():
+    try:
+        await tree.sync()
+        print(f"✅ Logged in as {bot.user}")
+        await send_guide()
+        ping_self.start()
+    except Exception as e:
+        await send_crash_log(str(e))
+
+# ================= SIMPLE WEB FOR PING =================
 async def handle(request):
     return web.Response(text="Bot is alive!")
 
-app = web.Application()
-app.router.add_get("/", handle)
-
-async def start_webserver():
+async def run_web():
+    app = web.Application()
+    app.router.add_get("/", handle)
     runner = web.AppRunner(app)
     await runner.setup()
-    site = web.TCPSite(runner, '0.0.0.0', int(os.environ.get("PORT", 3000)))
+    site = web.TCPSite(runner, "0.0.0.0", PING_PORT)
     await site.start()
-    print("🌐 Web server running for keep-alive")
 
-# ================= Ping ตัวเองทุก 5 นาที =================
-async def self_ping():
-    import aiohttp
-    while True:
-        try:
-            url = f"http://{os.environ.get('RENDER_INTERNAL_HOST', 'localhost')}:{os.environ.get('PORT', 3000)}"
-            async with aiohttp.ClientSession() as session:
-                await session.get(url)
-                print("🏓 Self ping sent")
-        except:
-            pass
-        await asyncio.sleep(300)  # 5 นาที
-
-# ================= Main Loop with Auto Restart & Crash Log =================
+# ================= MAIN =================
 async def main():
-    await start_webserver()
-    asyncio.create_task(self_ping())
-
-    while True:
-        try:
-            await bot.start(TOKEN)
-        except Exception:
-            print("❌ Bot crashed! Restarting...")
-            traceback.print_exc()
-            try:
-                if bot.is_ready():
-                    now = datetime.now().strftime("%d/%m/%Y %H:%M:%S")
-                    embed = discord.Embed(
-                        title="❌ Bot Crash Alert",
-                        description=f"เวลา: {now}\nเกิดข้อผิดพลาด:\n```{traceback.format_exc()}```",
-                        color=0xE74C3C
-                    )
-                    await crash_channel.send(embed=embed)
-            except:
-                pass
-            await asyncio.sleep(5)  # รอ 5 วิ ก่อน restart
+    await run_web()
+    await bot.start(TOKEN)
 
 asyncio.run(main())
