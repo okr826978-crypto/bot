@@ -1,16 +1,16 @@
 import os
 import discord
-from discord.ext import tasks
 from discord import app_commands
+from discord.ext import tasks
 from datetime import datetime
-import aiohttp
+from aiohttp import web
 
 # ================= CONFIG =================
 TOKEN = os.environ.get("DISCORD_TOKEN")
 TARGET_CHANNEL_ID = 123456789012345678  # ห้องฝากบอก
 ADMIN_CHANNEL_ID = 123456789012345678   # ห้อง log แอดมิน
 GUIDE_CHANNEL_ID = 123456789012345678   # ห้องคู่มือ
-PING_URL = os.environ.get("https://bot-zo60.onrender.com")    # ใส่ URL ตัวเองถ้าอยากให้ ping ทุก 5 นาที
+PORT = int(os.environ.get("PORT", 8000))  # Render จะกำหนด PORT ให้
 
 intents = discord.Intents.default()
 intents.members = True
@@ -24,7 +24,7 @@ async def send_guide():
     if guide_channel:
         embed = discord.Embed(
             title="📌 วิธีใช้คำสั่งฝากบอก",
-            description="ใช้คำสั่ง:\n`/ฝากบอก user:@ชื่อ message:ข้อความ reveal:(yes/no)`\n\nตัวอย่าง: `/ฝากบอก @โจ วันนี้เจอกันหน่อย reveal:yes`",
+            description="ใช้คำสั่ง:\n`/ฝากบอก user:@ชื่อ message:ข้อความ reveal:เลือกว่าจะเปิดเผยตัวตนหรือไม่`",
             color=0x5865F2
         )
         embed.set_footer(text="ระบบฝากบอกอัตโนมัติ")
@@ -39,23 +39,19 @@ async def send_crash_log(error_msg):
         embed.set_footer(text=f"📅 {datetime.now().strftime('%d/%m/%Y เวลา %H:%M')}")
         await admin_channel.send(embed=embed)
 
-# ================= KEEP ALIVE =================
-@tasks.loop(minutes=5)
-async def ping_self():
-    if PING_URL:
-        try:
-            async with aiohttp.ClientSession() as session:
-                await session.get(PING_URL)
-        except:
-            pass
+# ================= Choices ENUM =================
+class RevealChoice(discord.Enum):
+    yes = "เปิดเผยตัวตน"
+    no = "ไม่เปิดเผยตัวตน"
 
 # ================= ฝากบอก Command =================
 @tree.command(name="ฝากบอก", description="ฝากข้อความถึงใครบางคน")
+@app_commands.describe(user="ผู้รับข้อความ", message="ข้อความที่จะฝากบอก", reveal="เลือกว่าจะเปิดเผยตัวตนหรือไม่")
 async def send_message(
     interaction: discord.Interaction,
     user: discord.Member,
     message: str,
-    reveal: str  # เปลี่ยนเป็น str
+    reveal: RevealChoice
 ):
     try:
         await interaction.response.defer(ephemeral=True)
@@ -68,14 +64,14 @@ async def send_message(
 
         # ส่ง DM
         try:
-            sender_name = interaction.user.display_name if reveal.lower() == "yes" else "ไม่เปิดเผยตัวตน"
+            sender_name = interaction.user.display_name if reveal == RevealChoice.yes else "ไม่เปิดเผยตัวตน"
             await user.send(f"คุณได้รับข้อความจาก {sender_name}:\n\n{message}")
         except:
             pass
 
         # Log แอดมิน
         embed = discord.Embed(title="📩 ข้อความฝากบอกใหม่", color=0x1ABC9C)
-        embed.add_field(name="ผู้ส่ง", value=f"{interaction.user.mention} ({'เปิดเผย' if reveal.lower() == 'yes' else 'ไม่เปิดเผย'})", inline=False)
+        embed.add_field(name="ผู้ส่ง", value=f"{interaction.user.mention} ({'เปิดเผย' if reveal == RevealChoice.yes else 'ไม่เปิดเผย'})", inline=False)
         embed.add_field(name="ผู้รับ", value=f"{user.mention} ({user.id})", inline=False)
         embed.add_field(name="ข้อความ", value=message, inline=False)
         embed.set_footer(text=f"📅 {datetime.now().strftime('%d/%m/%Y เวลา %H:%M')}")
@@ -86,15 +82,6 @@ async def send_message(
     except Exception as e:
         await send_crash_log(str(e))
 
-# ================= Choices / Autocomplete =================
-@send_message.autocomplete("reveal")
-async def reveal_autocomplete(interaction: discord.Interaction, current: str):
-    choices = [
-        app_commands.Choice(name="ใช่ (เปิดเผยชื่อ)", value="yes"),
-        app_commands.Choice(name="ไม่ (ไม่เปิดเผยชื่อ)", value="no"),
-    ]
-    return [c for c in choices if current.lower() in c.name.lower()]
-
 # ================= Bot Events =================
 @bot.event
 async def on_ready():
@@ -102,9 +89,27 @@ async def on_ready():
         await tree.sync()
         print(f"✅ Logged in as {bot.user}")
         await send_guide()
-        ping_self.start()
     except Exception as e:
         await send_crash_log(str(e))
 
+# ================= WEB SERVER =================
+async def handle(request):
+    return web.Response(text="Bot is alive ✅")
+
+app = web.Application()
+app.add_routes([web.get('/', handle)])
+
+# Run web server in background
+async def start_web_server():
+    runner = web.AppRunner(app)
+    await runner.setup()
+    site = web.TCPSite(runner, '0.0.0.0', PORT)
+    await site.start()
+
 # ================= RUN BOT =================
-bot.run(TOKEN)
+async def main():
+    await start_web_server()
+    await bot.start(TOKEN)
+
+import asyncio
+asyncio.run(main())
