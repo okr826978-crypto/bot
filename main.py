@@ -4,7 +4,7 @@ from datetime import datetime
 
 # ================= CONFIG =================
 TOKEN = os.environ["DISCORD_TOKEN"]  # เก็บ TOKEN ใน ENV
-TARGET_CHANNEL_ID = 123456789012345678  # ห้องที่ฝากบอก
+TARGET_CHANNEL_ID = 123456789012345678  # ห้องฝากบอก
 ADMIN_CHANNEL_ID = 123456789012345678   # ห้อง log แอดมิน
 GUIDE_CHANNEL_ID = 123456789012345678   # ห้องคู่มือ
 
@@ -19,7 +19,8 @@ tree = discord.app_commands.CommandTree(bot)
 async def send_message(interaction: discord.Interaction,
                        user: discord.Member,
                        message: str,
-                       reveal: str):
+                       reveal: discord.app_commands.Choice[str]):
+
     await interaction.response.defer(ephemeral=True)
 
     guild = interaction.guild
@@ -31,7 +32,7 @@ async def send_message(interaction: discord.Interaction,
 
     # ส่ง DM ถึงผู้รับ
     try:
-        sender_name = interaction.user.display_name if reveal.strip().lower() == "ใช่" else "ไม่เปิดเผยตัวตน"
+        sender_name = interaction.user.display_name if reveal.value == "yes" else "ไม่เปิดเผยตัวตน"
         await user.send(f"คุณได้รับข้อความจาก {sender_name}:\n\n{message}")
     except:
         pass
@@ -41,7 +42,7 @@ async def send_message(interaction: discord.Interaction,
     embed = discord.Embed(title="📩 ข้อความฝากบอกใหม่", color=0x1ABC9C)
     embed.add_field(
         name="ผู้ส่ง",
-        value=f"{interaction.user.mention} ({'เปิดเผย' if reveal.strip().lower() == 'ใช่' else 'ไม่เปิดเผย'})",
+        value=f"{interaction.user.mention} ({'เปิดเผย' if reveal.value == 'yes' else 'ไม่เปิดเผย'})",
         inline=False
     )
     embed.add_field(name="ผู้รับ", value=f"{user.mention} ({user.id})", inline=False)
@@ -55,6 +56,12 @@ async def send_message(interaction: discord.Interaction,
 # ================= Bot Events =================
 @bot.event
 async def on_ready():
+    # สมัคร Choice ให้ /ฝากบอก
+    send_message.parameters["reveal"].choices = [
+        discord.app_commands.Choice(name="ใช่ (เปิดเผยชื่อ)", value="yes"),
+        discord.app_commands.Choice(name="ไม่ (ไม่เปิดเผยชื่อ)", value="no"),
+    ]
+
     await tree.sync()
     print(f"✅ Logged in as {bot.user}")
 
@@ -63,7 +70,7 @@ async def on_ready():
         embed = discord.Embed(
             title="📌 วิธีใช้คำสั่งฝากบอก",
             description="ใช้คำสั่ง:\n\n"
-                        "`/ฝากบอก user:@ชื่อ message:ข้อความ reveal:ใช่/ไม่`\n\n"
+                        "`/ฝากบอก user:@ชื่อ message:ข้อความ reveal:(เลือกได้)`\n\n"
                         "🔹 ตัวอย่าง: `/ฝากบอก @Jojo วันนี้เจอกันหน่อย reveal:ไม่`",
             color=0x5865F2
         )
