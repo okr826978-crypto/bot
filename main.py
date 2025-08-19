@@ -25,29 +25,23 @@ intents.members = True
 bot = commands.Bot(command_prefix="!", intents=intents)
 
 # ==== CONFIG ====
-BUTTON_CHANNEL_ID = 1406537337676103742   # ห้องปุ่มฝากบอก
-TARGET_CHANNEL_ID = 1406537424947122266   # ห้องที่ส่งข้อความไปหาเป้าหมาย
-ADMIN_CHANNEL_ID = 1406539787594240041    # ห้อง log แอดมิน
+BUTTON_CHANNEL_ID = 1406537337676103742
+TARGET_CHANNEL_ID = 1406537424947122266
+ADMIN_CHANNEL_ID = 1406539787594240041
 
 # ================= Modal ฝากข้อความ =================
-class MessageModal(discord.ui.Modal, title="ฝากบอก"):
+class MessageModal(discord.ui.Modal, title="ฝากบอกข้อความ"):
     user_message = discord.ui.TextInput(
-        label="ข้อความที่ต้องการฝากบอก",
+        label="ข้อความของคุณ",
         style=discord.TextStyle.paragraph,
         required=True,
         placeholder="พิมพ์ข้อความที่อยากบอกผู้รับ"
     )
-    hint = discord.ui.TextInput(
-        label="คำใบ้ (ไม่บังคับ)",
-        style=discord.TextStyle.short,
-        required=False,
-        placeholder="เว้นว่างได้"
-    )
     reveal = discord.ui.TextInput(
         label="เปิดเผยตัวตน?",
         style=discord.TextStyle.short,
-        required=False,
-        placeholder="พิมพ์ 'ใช่' ถ้าอยากเปิดเผย (ถ้าเว้นว่าง = ไม่เปิดเผย)"
+        required=True,
+        placeholder="พิมพ์ 'ใช่' หรือ 'ไม่'"
     )
 
     def __init__(self, target_member: discord.Member):
@@ -55,53 +49,10 @@ class MessageModal(discord.ui.Modal, title="ฝากบอก"):
         self.target_member = target_member
 
     async def on_submit(self, interaction: discord.Interaction):
-        await send_message(
-            interaction,
-            self.user_message.value,
-            self.hint.value,
-            self.reveal.value,
-            self.target_member
-        )
-
-# ================= Modal ตอบกลับ =================
-class ReplyModal(discord.ui.Modal, title="ตอบกลับข้อความ"):
-    reply_message = discord.ui.TextInput(
-        label="ข้อความตอบกลับ",
-        style=discord.TextStyle.paragraph,
-        required=True,
-        placeholder="พิมพ์ข้อความตอบกลับ"
-    )
-
-    def __init__(self, sender: discord.Member, target_channel: discord.TextChannel):
-        super().__init__()
-        self.sender = sender
-        self.target_channel = target_channel
-
-    async def on_submit(self, interaction: discord.Interaction):
-        # ส่ง DM หาผู้ส่ง
-        try:
-            await self.sender.send(
-                f"📩 {interaction.user.display_name} ตอบกลับข้อความของคุณ:\n\n{self.reply_message.value}"
-            )
-            dm_status = "✅ DM สำเร็จ"
-        except:
-            dm_status = "❌ DM ไม่สำเร็จ"
-
-        # ส่งลงห้องฝากบอกด้วย
-        embed = discord.Embed(
-            title=f"💬 {interaction.user.display_name} ตอบกลับ",
-            description=self.reply_message.value,
-            color=0x3498DB
-        )
-        embed.set_footer(text="ตอบกลับโดยระบบ")
-
-        await self.target_channel.send(content=f"{self.sender.mention}", embed=embed)
-
-        # ตอบกลับที่ modal
-        await interaction.response.send_message(f"✅ ส่งข้อความตอบกลับแล้ว ({dm_status})", ephemeral=True)
+        await send_message(interaction, self.user_message.value, self.reveal.value, self.target_member)
 
 # ================= ฟังก์ชันส่งข้อความ =================
-async def send_message(interaction, user_message, hint, reveal, target_member):
+async def send_message(interaction, user_message, reveal, target_member):
     guild = interaction.guild
     target_channel = guild.get_channel(TARGET_CHANNEL_ID)
     admin_channel = guild.get_channel(ADMIN_CHANNEL_ID)
@@ -111,55 +62,28 @@ async def send_message(interaction, user_message, hint, reveal, target_member):
     # Embed ฝากบอก
     embed = discord.Embed(
         title=f"📩 มีข้อความฝากบอกถึงคุณ {target_member.display_name}",
-        description=user_message,
-        color=0x2ECC71
+        color=0x1ABC9C
     )
-    if hint.strip():
-        embed.add_field(name="คำใบ้", value=hint, inline=False)
+    embed.add_field(name="ข้อความ", value=user_message, inline=False)
+    embed.add_field(name="ค่าใช้", value="ไม่มี", inline=False)
     embed.add_field(name="จาก", value=sender_name, inline=False)
+    embed.set_footer(text="ฝากบอกโดยระบบ")
 
-    # ปุ่มตอบกลับ
-    view = discord.ui.View()
-    view.add_item(
-        discord.ui.Button(
-            label="💬 ตอบกลับ",
-            style=discord.ButtonStyle.primary,
-            custom_id=f"reply_{interaction.user.id}"
-        )
-    )
+    # ส่งไปยัง target
+    await target_channel.send(content=f"{target_member.mention}", embed=embed)
 
-    # ส่งไปยัง target channel
-    await target_channel.send(content=f"{target_member.mention}", embed=embed, view=view)
-
-    # Log แอดมิน
-    now = datetime.now().strftime("%d/%m/%Y %H:%M")
-    admin_embed = discord.Embed(title="📩 ข้อความฝากบอกใหม่", color=0x5865F2)
+    # Embed แอดมิน
+    now = datetime.now().strftime("%d/%m/%Y เวลา %H:%M")
+    admin_embed = discord.Embed(title="📩 ข้อความฝากบอกใหม่", color=0x1ABC9C)
     admin_embed.add_field(name="ผู้ส่ง", value=f"{interaction.user.mention} ({sender_name})", inline=False)
     admin_embed.add_field(name="ผู้รับ", value=f"{target_member.mention} ({target_member.id})", inline=False)
     admin_embed.add_field(name="ข้อความ", value=user_message, inline=False)
-    if hint.strip():
-        admin_embed.add_field(name="คำใบ้", value=hint, inline=False)
     admin_embed.set_footer(text=f"📅 {now}")
     await admin_channel.send(embed=admin_embed)
 
-    # ตอบกลับคนส่ง (ephemeral)
     await interaction.response.send_message("✅ ฝากบอกสำเร็จ! ส่งเรียบร้อยแล้ว", ephemeral=True)
 
-# ================= จัดการปุ่มตอบกลับ =================
-@bot.event
-async def on_interaction(interaction: discord.Interaction):
-    if interaction.type == discord.InteractionType.component:
-        if interaction.data.get("custom_id", "").startswith("reply_"):
-            sender_id = int(interaction.data["custom_id"].split("_")[1])
-            sender = interaction.guild.get_member(sender_id)
-            target_channel = interaction.guild.get_channel(TARGET_CHANNEL_ID)
-
-            if sender and target_channel:
-                await interaction.response.send_modal(ReplyModal(sender, target_channel))
-            else:
-                await interaction.response.send_message("❌ ไม่พบผู้ส่งหรือห้องเป้าหมาย", ephemeral=True)
-
-# ================= Modal ค้นหาผู้รับ =================
+# ================= Modal ใส่ชื่อผู้รับ =================
 class SearchMemberModal(discord.ui.Modal, title="ค้นหาผู้รับข้อความ"):
     search_name = discord.ui.TextInput(
         label="พิมพ์ชื่อผู้รับ",
@@ -183,7 +107,7 @@ class SearchMemberModal(discord.ui.Modal, title="ค้นหาผู้รั�
                     discord.SelectOption(label=m.display_name[:45], value=str(m.id))
                     for m in members[:25]
                 ]
-                super().__init__(placeholder="🟢 เลือกผู้รับ", min_values=1, max_values=1, options=options)
+                super().__init__(placeholder="เลือกผู้รับ", min_values=1, max_values=1, options=options)
 
             async def callback(self, select_interaction: discord.Interaction):
                 member_id = int(self.values[0])
@@ -199,7 +123,7 @@ class SearchMemberModal(discord.ui.Modal, title="ค้นหาผู้รั�
 
 # ================= Button =================
 class OpenButton(discord.ui.View):
-    @discord.ui.button(label="📝 เขียนข้อความ", style=discord.ButtonStyle.success)
+    @discord.ui.button(label="📝 เขียนข้อความ", style=discord.ButtonStyle.primary)
     async def open_modal(self, interaction: discord.Interaction, button: discord.ui.Button):
         await interaction.response.send_modal(SearchMemberModal())
 
@@ -214,13 +138,7 @@ async def send_button():
     await bot.wait_until_ready()
     channel = bot.get_channel(BUTTON_CHANNEL_ID)
     if channel:
-        embed = discord.Embed(
-            title="💌 ฝากบอก",
-            description="แอบมีอะไรอยุ่ในใจ อยากบอกใคร ลองกดปุ่มด้านล่างดูสิ 💌",
-            color=0x2ECC71
-        )
-        embed.set_image(url="https://cdn.discordapp.com/attachments/1406523355460272208/1406982406258298930/ggt.png")  
-        await channel.send(embed=embed, view=OpenButton())
+        await channel.send("กดปุ่มเพื่อฝากบอกข้อความ 👇", view=OpenButton())
 
 # ================= Run Bot =================
 keep_alive()
