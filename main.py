@@ -1,21 +1,21 @@
 import os
 import discord
-from discord.ext import commands
 from datetime import datetime
 
 # ================= CONFIG =================
-TOKEN = os.environ["DISCORD_TOKEN"]  # ใส่ TOKEN ไว้ใน ENV
-TARGET_CHANNEL_ID = 123456789012345678  # ห้องที่ฝากบอก (ข้อความถึงผู้รับ)
+TOKEN = os.environ["DISCORD_TOKEN"]  # เก็บ TOKEN ใน ENV
+TARGET_CHANNEL_ID = 123456789012345678  # ห้องที่ฝากบอก
 ADMIN_CHANNEL_ID = 123456789012345678   # ห้อง log แอดมิน
-GUIDE_CHANNEL_ID = 1406537337676103742   # ห้องที่ให้บอทโพสต์คู่มือ
+GUIDE_CHANNEL_ID = 123456789012345678   # ห้องคู่มือ
 
 # ================= BOT SETUP =================
 intents = discord.Intents.default()
 intents.members = True
-bot = commands.Bot(command_prefix="!", intents=intents)
+bot = discord.Client(intents=intents)
+tree = discord.app_commands.CommandTree(bot)
 
 # ================= ฝากบอก Command =================
-@bot.tree.command(name="ฝากบอก", description="ฝากข้อความถึงใครบางคน")
+@tree.command(name="ฝากบอก", description="ฝากข้อความถึงใครบางคน")
 async def send_message(interaction: discord.Interaction,
                        user: discord.Member,
                        message: str,
@@ -26,11 +26,8 @@ async def send_message(interaction: discord.Interaction,
     target_channel = guild.get_channel(TARGET_CHANNEL_ID)
     admin_channel = guild.get_channel(ADMIN_CHANNEL_ID)
 
-    # เนื้อหาสำหรับห้องฝากบอก
-    public_content = f"**ถึง {user.mention}**\n{message}"
-
     # ส่งเข้าห้องฝากบอก
-    await target_channel.send(public_content)
+    await target_channel.send(f"**ถึง {user.mention}**\n{message}")
 
     # ส่ง DM ถึงผู้รับ
     try:
@@ -58,14 +55,14 @@ async def send_message(interaction: discord.Interaction,
 # ================= Bot Events =================
 @bot.event
 async def on_ready():
-    await bot.tree.sync()
+    await tree.sync()
     print(f"✅ Logged in as {bot.user}")
 
     guide_channel = bot.get_channel(GUIDE_CHANNEL_ID)
     if guide_channel:
         embed = discord.Embed(
             title="📌 วิธีใช้คำสั่งฝากบอก",
-            description="ถ้าต้องการฝากข้อความถึงใคร ให้ใช้คำสั่ง:\n\n"
+            description="ใช้คำสั่ง:\n\n"
                         "`/ฝากบอก user:@ชื่อ message:ข้อความ reveal:ใช่/ไม่`\n\n"
                         "🔹 ตัวอย่าง: `/ฝากบอก @Jojo วันนี้เจอกันหน่อย reveal:ไม่`",
             color=0x5865F2
