@@ -1,2 +1,4 @@
-discord.py==2.3.2
-Flask==2.2.5
+discord.py
+aiohttp
+
+
