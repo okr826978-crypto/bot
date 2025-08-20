@@ -24,7 +24,8 @@ async def send_guide():
         await guide_channel.purge(limit=100)
         embed = discord.Embed(
             title="📌 วิธีใช้คำสั่งฝากบอก",
-            description="ใช้คำสั่ง:\n`/ฝากบอก user:@ชื่อ message:ข้อความ hint:คำใบ้`\n\nตัวอย่าง: `/ฝากบอก @โจ วันนี้เจอกันหน่อย hint:เรื่องงาน`",
+            description="ใช้คำสั่ง:\n`/ฝากบอก user:@ชื่อ message:ข้อความ hint:คำใบ้`\n\n"
+                        "ตัวอย่าง: `/ฝากบอก @โจ วันนี้เจอกันหน่อย hint:เรื่องงาน`",
             color=0x5865F2
         )
         embed.set_footer(text="ระบบฝากบอกอัตโนมัติ")
@@ -39,9 +40,40 @@ async def send_crash_log(error_msg):
         embed.set_footer(text=f"📅 {datetime.now().strftime('%d/%m/%Y เวลา %H:%M')}")
         await admin_channel.send(embed=embed)
 
-# ================= VIEW ตอบกลับ =================
+# ================= Modal ตอบกลับ =================
+class ReplyModal(discord.ui.Modal, title="✍️ ตอบกลับข้อความ"):
+    def __init__(self, sender_id, original_embed, original_message):
+        super().__init__()
+        self.sender_id = sender_id
+        self.original_embed = original_embed
+        self.original_message = original_message
+
+        self.reply_input = discord.ui.TextInput(
+            label="พิมพ์ข้อความตอบกลับ",
+            style=discord.TextStyle.paragraph,
+            required=True,
+            max_length=500
+        )
+        self.add_item(self.reply_input)
+
+    async def on_submit(self, interaction: discord.Interaction):
+        reply_text = self.reply_input.value
+        sender = await bot.fetch_user(self.sender_id)
+
+        # ส่งข้อความไปหาผู้ส่ง (ไม่มีคำว่าตอบกลับ)
+        if sender:
+            await sender.send(f"📨 คุณได้รับข้อความใหม่จาก {interaction.user.display_name}:\n\n{reply_text}")
+
+        # อัปเดต embed เดิม
+        updated_embed = self.original_embed.copy()
+        updated_embed.add_field(name="ข้อความตอบกลับ", value=reply_text, inline=False)
+        await self.original_message.edit(embed=updated_embed, view=None)
+
+        await interaction.response.send_message("✅ ส่งข้อความตอบกลับแล้ว!", ephemeral=True)
+
+# ================= VIEW ปุ่ม =================
 class ReplyView(discord.ui.View):
-    def __init__(self, sender_id, original_embed: discord.Embed, original_message: discord.Message):
+    def __init__(self, sender_id, original_embed, original_message):
         super().__init__(timeout=None)
         self.sender_id = sender_id
         self.original_embed = original_embed
@@ -49,27 +81,9 @@ class ReplyView(discord.ui.View):
 
     @discord.ui.button(label="💌 ตอบกลับ", style=discord.ButtonStyle.primary)
     async def reply_button(self, interaction: discord.Interaction, button: discord.ui.Button):
-        await interaction.response.send_message("✍️ พิมพ์ข้อความตอบกลับที่คุณต้องการส่ง:", ephemeral=True)
-
-        def check(m):
-            return m.author == interaction.user and isinstance(m.channel, discord.DMChannel)
-
-        try:
-            msg = await bot.wait_for("message", check=check, timeout=120)
-            sender = await bot.fetch_user(self.sender_id)
-            if sender:
-                # ส่งข้อความไปหาผู้ส่ง
-                await sender.send(f"📨 คุณได้รับการตอบกลับจาก {interaction.user.display_name}:\n\n{msg.content}")
-
-                # อัปเดต embed เดิม
-                updated_embed = self.original_embed
-                updated_embed.add_field(name="ข้อความตอบกลับ", value=msg.content, inline=False)
-
-                await self.original_message.edit(embed=updated_embed, view=None)
-
-                await interaction.followup.send("✅ ส่งข้อความตอบกลับแล้ว!", ephemeral=True)
-        except:
-            await interaction.followup.send("⏰ หมดเวลา! กรุณากดปุ่มอีกครั้งหากต้องการตอบกลับ", ephemeral=True)
+        await interaction.response.send_modal(
+            ReplyModal(self.sender_id, self.original_embed, self.original_message)
+        )
 
 # ================= ฝากบอก Command =================
 @tree.command(name="ฝากบอก", description="ฝากข้อความถึงใครบางคน (ไม่เปิดเผยตัวตน)")
@@ -97,7 +111,7 @@ async def send_message(interaction: discord.Interaction, user: discord.Member, m
         view = ReplyView(sender_id=interaction.user.id, original_embed=embed, original_message=msg_sent)
         await msg_sent.edit(view=view)
 
-        # ส่ง DM
+        # ส่ง DM (ไม่มีคำว่าตอบกลับ)
         try:
             await user.send(embed=embed, view=view)
         except:
