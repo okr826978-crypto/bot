@@ -32,10 +32,10 @@ last_messages = {}  # ตัวอย่าง: {"msg": str, "hint": str, "time"
 # ================= ฟังก์ชันส่งคู่มือ =================
 async def send_guide():
     """ส่งคู่มือคำสั่งฝากบอกไปที่ GUIDE_CHANNEL_ID"""
-    await bot.wait_until_ready()  # รอให้บอทพร้อมก่อน
+    await bot.wait_until_ready()
     guide_channel = bot.get_channel(GUIDE_CHANNEL_ID)
     if guide_channel:
-        await guide_channel.purge(limit=100)  # ลบข้อความเก่าก่อน
+        await guide_channel.purge(limit=100)
         embed = discord.Embed(
             title=":GoodMorning: วิธีใช้คำสั่งฝากบอก",
             description="ใช้คำสั่ง:\n`/ฝากบอก user:@ชื่อ message:ข้อความ hint:คำใบ้`\n\n"
@@ -53,11 +53,9 @@ async def send_role_guide():
         await guide_channel.purge(limit=100)
         embed = discord.Embed(
             title=":GoodMorning: วิธีใช้คำสั่งย้ายยศ",
-            description=(
-                f"ใช้คำสั่งในห้อง <#{ROLE_COMMAND_CHANNEL_ID}> เท่านั้น\n\n"
-                "`/ย้ายยศ user:@ชื่อ role:@Role`\n\n"
-                "ตัวอย่าง:\n`/ย้ายยศ @โจ @VIP`"
-            ),
+            description=(f"ใช้คำสั่งในห้อง <#{ROLE_COMMAND_CHANNEL_ID}> เท่านั้น\n\n"
+                         "`/ย้ายยศ user:@ชื่อ role:@Role`\n\n"
+                         "ตัวอย่าง:\n`/ย้ายยศ @โจ @VIP`"),
             color=0x5865F2
         )
         embed.set_footer(text="ระบบย้ายยศอัตโนมัติ")
@@ -79,12 +77,7 @@ async def send_crash_log(error_msg):
 
 # ================= Modal สำหรับตอบกลับ =================
 class ReplyModal(discord.ui.Modal, title=":55994bubblesweat: ตอบกลับข้อความ"):
-    """
-    Modal สำหรับให้ผู้ใช้กรอกข้อความตอบกลับ
-    - sender_id: ID ของผู้ส่งข้อความเดิม
-    - original_embed: embed ของข้อความเดิม
-    - original_message: ข้อความเดิมใน Discord
-    """
+    """Modal สำหรับให้ผู้ใช้กรอกข้อความตอบกลับ"""
     def __init__(self, sender_id, original_embed, original_message):
         super().__init__()
         self.sender_id = sender_id
@@ -123,7 +116,6 @@ class ReplyView(discord.ui.View):
 
     @discord.ui.button(label=":55994bubblesweat: ตอบกลับ", style=discord.ButtonStyle.primary)
     async def reply_button(self, interaction: discord.Interaction, button: discord.ui.Button):
-        # ป้องกันใช้ปุ่มนอกห้องฝากบอก
         if interaction.channel.id != TARGET_CHANNEL_ID:
             return await interaction.response.send_message(":55994bubblesweat: ใช้ปุ่มนี้ได้เฉพาะในห้องฝากบอก", ephemeral=True)
         await interaction.response.send_modal(ReplyModal(self.sender_id, self.original_embed, self.original_message))
@@ -131,14 +123,8 @@ class ReplyView(discord.ui.View):
 # ================= คำสั่ง /ฝากบอก =================
 @tree.command(name="ฝากบอก", description="ฝากข้อความถึงใครบางคน (ไม่เปิดเผยตัวตน)")
 async def send_message(interaction: discord.Interaction, user: discord.Member, message: str, hint: str = "ไม่มี"):
-    """
-    - ส่งข้อความฝากบอกไปยังห้อง TARGET_CHANNEL_ID
-    - ส่ง DM ไปยังผู้รับ (ถ้าเปิด DM)
-    - เพิ่มปุ่มตอบกลับใต้ข้อความ
-    - บันทึก Log ไปที่ ADMIN_CHANNEL_ID
-    """
+    """ส่งข้อความฝากบอกไปยังห้อง TARGET_CHANNEL_ID พร้อมปุ่มตอบกลับและบันทึก Log"""
     try:
-        # ตรวจสอบ server และห้อง
         if interaction.guild.id != GUILD_ID:
             return await interaction.response.send_message(":guarded: ใช้คำสั่งนี้ได้เฉพาะ Server ที่กำหนด", ephemeral=True)
         if interaction.channel.id != TARGET_CHANNEL_ID:
@@ -148,7 +134,6 @@ async def send_message(interaction: discord.Interaction, user: discord.Member, m
         target_channel = interaction.guild.get_channel(TARGET_CHANNEL_ID)
         admin_channel = interaction.guild.get_channel(ADMIN_CHANNEL_ID)
 
-        # สร้าง embed ของข้อความฝากบอก
         embed = discord.Embed(
             title=":GoodMorning: มีข้อความฝากบอกถึงคุณ",
             color=0x2ECC71,
@@ -158,7 +143,6 @@ async def send_message(interaction: discord.Interaction, user: discord.Member, m
         embed.add_field(name="คำใบ้", value=hint if hint else "ไม่มี", inline=False)
         embed.set_footer(text="ระบบฝากบอกอัตโนมัติ")
 
-        # ส่งข้อความไปยังห้องฝากบอก
         msg_sent = await target_channel.send(content=f"{user.mention}", embed=embed)
         view = ReplyView(sender_id=interaction.user.id, original_embed=embed, original_message=msg_sent)
         await msg_sent.edit(view=view)
@@ -167,7 +151,7 @@ async def send_message(interaction: discord.Interaction, user: discord.Member, m
         try:
             await user.send(embed=embed, view=view)
         except:
-            pass  # ถ้า DM ปิดไม่ต้อง Error
+            pass
 
         # บันทึก log ไปยังแอดมิน
         log_embed = discord.Embed(title=":GoodMorning: ข้อความฝากบอกใหม่", color=0x1ABC9C)
@@ -185,51 +169,37 @@ async def send_message(interaction: discord.Interaction, user: discord.Member, m
 # ================= คำสั่ง /ย้ายยศ =================
 @tree.command(name="ย้ายยศ", description="ให้สมาชิกย้ายยศกันเอง")
 async def move_role(interaction: discord.Interaction, user: discord.Member, role: discord.Role):
-    """
-    - ตรวจสอบ server และห้อง
-    - ถ้า user มี role อยู่แล้ว -> ลบ
-    - ถ้าไม่มี -> เพิ่ม
-    - ส่งข้อความตอบกลับผู้ใช้
-    """
+    """เพิ่ม/ลบ Role ของสมาชิก พร้อมตรวจสอบ server และห้อง"""
     try:
         if interaction.guild.id != GUILD_ID:
             return await interaction.response.send_message(":guarded: ใช้ได้เฉพาะ Server ที่กำหนด", ephemeral=True)
-
         if interaction.channel.id != ROLE_COMMAND_CHANNEL_ID:
-            return await interaction.response.send_message(
-                f":guarded: ใช้คำสั่งนี้ได้เฉพาะในห้อง <#{ROLE_COMMAND_CHANNEL_ID}> เท่านั้น", ephemeral=True
-            )
-
+            return await interaction.response.send_message(":guarded: ใช้ได้เฉพาะในห้องคำสั่งยศ", ephemeral=True)
+        
         if role in user.roles:
             await user.remove_roles(role)
-            await interaction.response.send_message(f":eri: ลบยศ {role.name} ของ {user.display_name} เรียบร้อย", ephemeral=True)
+            await interaction.response.send_message(f":GoodMorning: ลบยศ {role.name} จาก {user.display_name}", ephemeral=True)
         else:
             await user.add_roles(role)
-            await interaction.response.send_message(f":eri: เพิ่มยศ {role.name} ให้ {user.display_name} เรียบร้อย", ephemeral=True)
+            await interaction.response.send_message(f":GoodMorning: เพิ่มยศ {role.name} ให้ {user.display_name}", ephemeral=True)
 
     except Exception as e:
         await send_crash_log(str(e))
         await interaction.response.send_message(":76413patrickbuu: เกิดข้อผิดพลาดในการย้ายยศ", ephemeral=True)
 
-# ================= คำสั่ง /reload =================
-@tree.command(name="reload", description="รีโหลดคำสั่งใหม่ทันที (Admin เท่านั้น)")
-async def reload_commands(interaction: discord.Interaction):
-    """
-    - Admin ใช้เพื่อรีโหลดคำสั่ง Slash
-    - ป้องกันผู้ไม่ใช่ admin
-    """
-    try:
-        if not interaction.user.guild_permissions.administrator:
-            return await interaction.response.send_message(":no_entry: คุณไม่มีสิทธิ์ใช้คำสั่งนี้", ephemeral=True)
+# ================= WEB SERVER PING =================
+async def start_webserver():
+    """เริ่ม Web server สำหรับ Heroku / Render เพื่อไม่ให้บอท exit"""
+    async def handle(request):
+        return web.Response(text="Bot is running ✅")
 
-        await interaction.response.defer(ephemeral=True)
-        guild = discord.Object(id=GUILD_ID)
-        await tree.sync(guild=guild)
-        await interaction.followup.send(":white_check_mark: รีโหลดคำสั่งเรียบร้อย!", ephemeral=True)
-        print(f"{interaction.user} รีโหลดคำสั่งเรียบร้อย")
-    except Exception as e:
-        await send_crash_log(str(e))
-        await interaction.followup.send(":x: เกิดข้อผิดพลาดในการรีโหลดคำสั่ง", ephemeral=True)
+    app = web.Application()
+    app.router.add_get("/", handle)
+    runner = web.AppRunner(app)
+    await runner.setup()
+    site = web.TCPSite(runner, "0.0.0.0", PORT)
+    await site.start()
+    print(f"Web server started on port {PORT} ✅")
 
 # ================= EVENT on_ready =================
 @bot.event
@@ -242,3 +212,8 @@ async def on_ready():
     await tree.sync(guild=guild)  # sync คำสั่ง slash
     print("Slash commands synced.")
 
+    # เริ่ม Web server ping
+    bot.loop.create_task(start_webserver())
+
+# ================= RUN BOT =================
+bot.run(TOKEN)
