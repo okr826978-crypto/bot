@@ -6,7 +6,6 @@ from aiohttp import web
 import asyncio
 
 # ================= CONFIG =================
-# ตั้งค่าต่าง ๆ ของบอท
 TOKEN = os.environ.get("DISCORD_TOKEN")  # Token ของบอท
 GUILD_ID = 1209931632782344243           # Server ID ของคุณ
 TARGET_CHANNEL_ID = 1406537424947122266  # ห้องฝากบอก
@@ -18,25 +17,20 @@ ROLE_COMMAND_CHANNEL_ID = 1407702892789502054 # ห้องใช้คำส�
 PORT = int(os.environ.get("PORT", 3000))      # พอร์ตสำหรับเว็บเซิร์ฟเวอร์
 
 # ================= INTENTS =================
-# ตั้งค่า intents เพื่อให้บอทสามารถเข้าถึงสมาชิก
 intents = discord.Intents.default()
-intents.members = True  # ต้องเปิดเพื่อดึงข้อมูลสมาชิก
+intents.members = True
 bot = discord.Client(intents=intents)
-tree = app_commands.CommandTree(bot)  # สำหรับ Slash commands
+tree = app_commands.CommandTree(bot)
 
 # ================= ตัวเก็บข้อความล่าสุด =================
-# ใช้เก็บข้อความล่าสุด ถ้าต้องการทำการแก้ไขหรือดูย้อนหลัง
 last_messages = {}
 
 # ================= ฟังก์ชันส่งคู่มือ /ฝากบอก =================
 async def send_guide():
-    """
-    ลบข้อความเดิมในห้องคู่มือแล้วส่ง embed ใหม่อธิบายวิธีใช้คำสั่ง /ฝากบอก
-    """
     await bot.wait_until_ready()
     guide_channel = bot.get_channel(GUIDE_CHANNEL_ID)
     if guide_channel:
-        await guide_channel.purge(limit=100)  # ลบข้อความเก่า
+        await guide_channel.purge(limit=100)
         embed = discord.Embed(
             title="🌅 วิธีใช้คำสั่งฝากบอก",
             description="ใช้คำสั่ง:\n`/ฝากบอก user:@ชื่อ message:ข้อความ hint:คำใบ้`\n\n"
@@ -48,9 +42,6 @@ async def send_guide():
 
 # ================= ฟังก์ชันส่งคู่มือ /ย้ายยศ =================
 async def send_role_guide():
-    """
-    ลบข้อความเดิมในห้องคู่มือแล้วส่ง embed ใหม่อธิบายวิธีใช้คำสั่ง /ย้ายยศ
-    """
     await bot.wait_until_ready()
     guide_channel = bot.get_channel(ROLE_GUIDE_CHANNEL_ID)
     if guide_channel:
@@ -68,9 +59,6 @@ async def send_role_guide():
 
 # ================= ฟังก์ชันแจ้ง Error =================
 async def send_crash_log(error_msg):
-    """
-    ส่งข้อความแจ้งข้อผิดพลาดไปยัง Admin
-    """
     await bot.wait_until_ready()
     admin_channel = bot.get_channel(ADMIN_CHANNEL_ID)
     if admin_channel:
@@ -84,14 +72,11 @@ async def send_crash_log(error_msg):
 
 # ================= Modal สำหรับตอบกลับ =================
 class ReplyModal(discord.ui.Modal, title="💬 ตอบกลับข้อความ"):
-    """
-    Modal ให้ผู้ดูแลตอบข้อความฝากบอกแบบไม่เปิดเผยตัวตน
-    """
     def __init__(self, sender_id, original_embed, original_message):
         super().__init__()
-        self.sender_id = sender_id              # ID ของผู้ส่ง
-        self.original_embed = original_embed    # Embed ต้นฉบับ
-        self.original_message = original_message # Message ที่ส่งใน Channel
+        self.sender_id = sender_id
+        self.original_embed = original_embed
+        self.original_message = original_message
 
         self.reply_input = discord.ui.TextInput(
             label="พิมพ์ข้อความตอบกลับ",
@@ -102,14 +87,11 @@ class ReplyModal(discord.ui.Modal, title="💬 ตอบกลับข้อค
         self.add_item(self.reply_input)
 
     async def on_submit(self, interaction: discord.Interaction):
-        # ดึงข้อความที่พิมพ์
         reply_text = self.reply_input.value
         sender = await bot.fetch_user(self.sender_id)
         if sender:
-            # ส่ง DM กลับผู้ส่ง
             await sender.send(f"💌 คุณได้รับข้อความใหม่จาก {interaction.user.display_name}:\n\n{reply_text}")
 
-        # แก้ไข Embed เดิมให้เพิ่ม field ของข้อความตอบกลับ
         updated_embed = self.original_embed.copy()
         updated_embed.add_field(name="ข้อความตอบกลับ", value=reply_text, inline=False)
         await self.original_message.edit(embed=updated_embed, view=None)
@@ -117,9 +99,6 @@ class ReplyModal(discord.ui.Modal, title="💬 ตอบกลับข้อค
 
 # ================= VIEW ปุ่มตอบกลับ =================
 class ReplyView(discord.ui.View):
-    """
-    ปุ่มให้กดตอบกลับข้อความฝากบอก
-    """
     def __init__(self, sender_id, original_embed, original_message):
         super().__init__(timeout=None)
         self.sender_id = sender_id
@@ -128,7 +107,6 @@ class ReplyView(discord.ui.View):
 
     @discord.ui.button(label="💬 ตอบกลับ", style=discord.ButtonStyle.primary)
     async def reply_button(self, interaction: discord.Interaction, button: discord.ui.Button):
-        # ตรวจสอบห้องก่อน
         if interaction.channel.id != TARGET_CHANNEL_ID:
             return await interaction.response.send_message("💬 ใช้ปุ่มนี้ได้เฉพาะในห้องฝากบอก", ephemeral=True)
         await interaction.response.send_modal(ReplyModal(self.sender_id, self.original_embed, self.original_message))
@@ -136,14 +114,7 @@ class ReplyView(discord.ui.View):
 # ================= คำสั่ง /ฝากบอก =================
 @tree.command(name="ฝากบอก", description="ฝากข้อความถึงใครบางคน (ไม่เปิดเผยตัวตน)")
 async def send_message(interaction: discord.Interaction, user: discord.Member, message: str, hint: str = "ไม่มี"):
-    """
-    Slash command /ฝากบอก
-    - user: สมาชิกที่รับข้อความ
-    - message: ข้อความที่ส่ง
-    - hint: คำใบ้ (optional)
-    """
     try:
-        # ตรวจสอบ Server และ Channel
         if interaction.guild.id != GUILD_ID:
             return await interaction.response.send_message("🚫 ใช้คำสั่งนี้ได้เฉพาะ Server ที่กำหนด", ephemeral=True)
         if interaction.channel.id != TARGET_CHANNEL_ID:
@@ -153,7 +124,6 @@ async def send_message(interaction: discord.Interaction, user: discord.Member, m
         target_channel = interaction.guild.get_channel(TARGET_CHANNEL_ID)
         admin_channel = interaction.guild.get_channel(ADMIN_CHANNEL_ID)
 
-        # สร้าง Embed ของข้อความฝากบอก
         embed = discord.Embed(
             title="📬 มีข้อความฝากบอกถึงคุณ",
             color=0x2ECC71,
@@ -163,18 +133,15 @@ async def send_message(interaction: discord.Interaction, user: discord.Member, m
         embed.add_field(name="คำใบ้", value=hint if hint else "ไม่มี", inline=False)
         embed.set_footer(text="📬 ระบบฝากบอกอัตโนมัติ")
 
-        # ส่ง Embed พร้อมปุ่มตอบกลับ
         msg_sent = await target_channel.send(content=f"{user.mention}", embed=embed)
         view = ReplyView(sender_id=interaction.user.id, original_embed=embed, original_message=msg_sent)
         await msg_sent.edit(view=view)
 
-        # ส่ง DM ให้ผู้รับด้วย (ถ้าอนุญาต)
         try:
             await user.send(embed=embed, view=view)
         except:
             pass
 
-        # Log ไปยัง Admin
         log_embed = discord.Embed(title="📬 ข้อความฝากบอกใหม่", color=0x1ABC9C)
         log_embed.add_field(name="ผู้ส่ง", value=f"{interaction.user.mention} (ไม่เปิดเผยตัวตน)", inline=False)
         log_embed.add_field(name="ผู้รับ", value=f"{user.mention} ({user.id})", inline=False)
@@ -190,26 +157,16 @@ async def send_message(interaction: discord.Interaction, user: discord.Member, m
 # ================= คำสั่ง /ย้ายยศ =================
 @tree.command(name="ย้ายยศ", description="ให้สมาชิกย้ายยศกันเอง สามารถกำหนดระยะเวลาได้")
 async def move_role(interaction: discord.Interaction, user: discord.Member, role: discord.Role, duration: str = None):
-    """
-    Slash command /ย้ายยศ
-    - user: สมาชิกที่จะให้ยศ
-    - role: ยศที่ให้
-    - duration: เวลา เช่น 10m หรือ 2h (optional)
-    """
     try:
-        # ตรวจสอบ Server และ Channel
         if interaction.guild.id != GUILD_ID:
             return await interaction.response.send_message("🚫 ใช้ได้เฉพาะ Server ที่กำหนด", ephemeral=True)
         if interaction.channel.id != ROLE_COMMAND_CHANNEL_ID:
             return await interaction.response.send_message("🚫 ใช้ได้เฉพาะในห้องคำสั่งยศ", ephemeral=True)
 
         await interaction.response.defer(ephemeral=True)
-
-        # เพิ่ม Role
         await user.add_roles(role)
         await interaction.followup.send(f"✅ เพิ่มยศ {role.name} ให้ {user.display_name}", ephemeral=True)
 
-        # ถ้ามี duration ให้ลบ Role หลังหมดเวลา
         if duration:
             time_seconds = 0
             if duration.endswith("m"):
@@ -232,9 +189,6 @@ async def move_role(interaction: discord.Interaction, user: discord.Member, role
 
 # ================= WEB SERVER PING =================
 async def start_webserver():
-    """
-    สร้างเว็บเซิร์ฟเวอร์ง่าย ๆ เพื่อ Ping บอทให้อยู่ตลอด
-    """
     async def handle(request):
         return web.Response(text="Bot is running ✅")
 
@@ -250,12 +204,18 @@ async def start_webserver():
 @bot.event
 async def on_ready():
     print(f"Bot Logged in as {bot.user}")
-    await send_guide()      # ส่งคู่มือ /ฝากบอก
-    await send_role_guide() # ส่งคู่มือ /ย้ายยศ
+
+    # ✅ ตั้งสถานะเป็น "กำลังเล่น Jojo 💖"
+    await bot.change_presence(
+        activity=discord.Game(name="Jojo 💖")
+    )
+
+    await send_guide()
+    await send_role_guide()
     guild = discord.Object(id=GUILD_ID)
-    await tree.sync(guild=guild)  # Sync Slash commands
+    await tree.sync(guild=guild)
     print("Slash commands synced.")
-    bot.loop.create_task(start_webserver())  # เริ่มเว็บเซิร์ฟเวอร์
+    bot.loop.create_task(start_webserver())
 
 # ================= RUN BOT =================
 bot.run(TOKEN)
