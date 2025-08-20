@@ -1,6 +1,5 @@
 import os
 import discord
-from discord.ext import tasks
 from discord import app_commands
 from datetime import datetime
 from aiohttp import web
@@ -22,11 +21,10 @@ async def send_guide():
     await bot.wait_until_ready()
     guide_channel = bot.get_channel(GUIDE_CHANNEL_ID)
     if guide_channel:
-        # ลบข้อความเก่าทั้งหมดก่อน
         await guide_channel.purge(limit=100)
         embed = discord.Embed(
             title="📌 วิธีใช้คำสั่งฝากบอก",
-            description="ใช้คำสั่ง:\n`/ฝากบอก user:@ชื่อ message:ข้อความ`\n\nตัวอย่าง: `/ฝากบอก @โจ วันนี้เจอกันหน่อย`",
+            description="ใช้คำสั่ง:\n`/ฝากบอก user:@ชื่อ message:ข้อความ hint:คำใบ้`\n\nตัวอย่าง: `/ฝากบอก @โจ วันนี้เจอกันหน่อย hint:เรื่องงาน`",
             color=0x5865F2
         )
         embed.set_footer(text="ระบบฝากบอกอัตโนมัติ")
@@ -41,17 +39,17 @@ async def send_crash_log(error_msg):
         embed.set_footer(text=f"📅 {datetime.now().strftime('%d/%m/%Y เวลา %H:%M')}")
         await admin_channel.send(embed=embed)
 
-# ================= ฝากบอก Command =================
+# ================= VIEW ตอบกลับ =================
 class ReplyView(discord.ui.View):
-    def __init__(self, sender_id):
+    def __init__(self, sender_id, original_embed: discord.Embed, original_message: discord.Message):
         super().__init__(timeout=None)
         self.sender_id = sender_id
+        self.original_embed = original_embed
+        self.original_message = original_message
 
     @discord.ui.button(label="💌 ตอบกลับ", style=discord.ButtonStyle.primary)
     async def reply_button(self, interaction: discord.Interaction, button: discord.ui.Button):
-        await interaction.response.send_message(
-            "✍️ พิมพ์ข้อความตอบกลับที่คุณต้องการส่ง:", ephemeral=True
-        )
+        await interaction.response.send_message("✍️ พิมพ์ข้อความตอบกลับที่คุณต้องการส่ง:", ephemeral=True)
 
         def check(m):
             return m.author == interaction.user and isinstance(m.channel, discord.DMChannel)
@@ -60,18 +58,22 @@ class ReplyView(discord.ui.View):
             msg = await bot.wait_for("message", check=check, timeout=120)
             sender = await bot.fetch_user(self.sender_id)
             if sender:
+                # ส่งข้อความไปหาผู้ส่ง
                 await sender.send(f"📨 คุณได้รับการตอบกลับจาก {interaction.user.display_name}:\n\n{msg.content}")
+
+                # อัปเดต embed เดิม
+                updated_embed = self.original_embed
+                updated_embed.add_field(name="ข้อความตอบกลับ", value=msg.content, inline=False)
+
+                await self.original_message.edit(embed=updated_embed, view=None)
+
                 await interaction.followup.send("✅ ส่งข้อความตอบกลับแล้ว!", ephemeral=True)
         except:
             await interaction.followup.send("⏰ หมดเวลา! กรุณากดปุ่มอีกครั้งหากต้องการตอบกลับ", ephemeral=True)
 
-
+# ================= ฝากบอก Command =================
 @tree.command(name="ฝากบอก", description="ฝากข้อความถึงใครบางคน (ไม่เปิดเผยตัวตน)")
-async def send_message(
-    interaction: discord.Interaction,
-    user: discord.Member,
-    message: str
-):
+async def send_message(interaction: discord.Interaction, user: discord.Member, message: str, hint: str = "ไม่มี"):
     try:
         await interaction.response.defer(ephemeral=True)
         guild = interaction.guild
@@ -85,14 +87,15 @@ async def send_message(
             timestamp=datetime.now()
         )
         embed.add_field(name="ข้อความ", value=message, inline=False)
-        embed.add_field(name="คำใบ้", value="ไม่มี (ไม่เปิดเผยตัวตน)", inline=False)
+        embed.add_field(name="คำใบ้", value=hint if hint else "ไม่มี", inline=False)
         embed.set_footer(text="ระบบฝากบอกอัตโนมัติ")
 
-        # ปุ่มตอบกลับ
-        view = ReplyView(sender_id=interaction.user.id)
-
         # ส่งเข้าห้องฝากบอก
-        await target_channel.send(content=f"{user.mention}", embed=embed, view=view)
+        msg_sent = await target_channel.send(content=f"{user.mention}", embed=embed)
+
+        # ปุ่มตอบกลับ
+        view = ReplyView(sender_id=interaction.user.id, original_embed=embed, original_message=msg_sent)
+        await msg_sent.edit(view=view)
 
         # ส่ง DM
         try:
@@ -105,6 +108,7 @@ async def send_message(
         log_embed.add_field(name="ผู้ส่ง", value=f"{interaction.user.mention} (ไม่เปิดเผยตัวตน)", inline=False)
         log_embed.add_field(name="ผู้รับ", value=f"{user.mention} ({user.id})", inline=False)
         log_embed.add_field(name="ข้อความ", value=message, inline=False)
+        log_embed.add_field(name="คำใบ้", value=hint if hint else "ไม่มี", inline=False)
         log_embed.set_footer(text=f"📅 {datetime.now().strftime('%d/%m/%Y เวลา %H:%M')}")
         await admin_channel.send(embed=log_embed)
 
@@ -123,14 +127,14 @@ async def on_ready():
     except Exception as e:
         await send_crash_log(str(e))
 
-# ================= HTTP Server สำหรับ UptimeRobot =================
+# ================= HTTP Server =================
 async def handle_ping(request):
     return web.Response(text="Bot is alive!")
 
 app = web.Application()
 app.add_routes([web.get("/", handle_ping)])
 
-# ================= RUN BOT + HTTP SERVER =================
+# ================= RUN BOT =================
 async def main():
     runner = web.AppRunner(app)
     await runner.setup()
