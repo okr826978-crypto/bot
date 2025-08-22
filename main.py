@@ -108,6 +108,65 @@ class ReplyView(discord.ui.View):
             return await interaction.response.send_message("💬 ใช้ปุ่มนี้ได้เฉพาะในห้องฝากบอก", ephemeral=True)
         await interaction.response.send_modal(ReplyModal(self.sender_id, self.original_embed, self.original_message))
 
+# ================= ฟังก์ชันช่วยเรื่องเวลา =================
+def parse_duration(duration: str) -> int | None:
+    try:
+        if duration.endswith("m"):
+            return int(duration[:-1]) * 60
+        elif duration.endswith("h"):
+            return int(duration[:-1]) * 3600
+        elif duration.isdigit():
+            return int(duration) * 60  # default นาที
+        else:
+            return None
+    except:
+        return None
+
+# ================= ฟังก์ชันนับถอยหลังใน DM =================
+async def countdown_role_transfer(user: discord.Member, role: discord.Role, sender: discord.Member, seconds: int):
+    try:
+        minutes = seconds // 60
+        secs = seconds % 60
+        msg = await user.send(
+            f"⌛ คุณได้รับยศ `{role.name}` จาก {sender.mention}\n"
+            f"จะหมดเวลาใน **{minutes}:{secs:02d}**"
+        )
+
+        while seconds > 0:
+            await asyncio.sleep(1)
+            seconds -= 1
+            minutes = seconds // 60
+            secs = seconds % 60
+            try:
+                await msg.edit(content=
+                    f"⌛ คุณได้รับยศ `{role.name}` จาก {sender.mention}\n"
+                    f"จะหมดเวลาใน **{minutes}:{secs:02d}**"
+                )
+            except:
+                pass
+
+        # ครบเวลา → ลบ role ผู้รับ + คืน role ให้ผู้ส่ง
+        await user.remove_roles(role)
+        await sender.add_roles(role)
+        try:
+            await msg.edit(content=f"⌛ เวลาหมดแล้ว → ยศ `{role.name}` ถูกคืนให้ {sender.mention}")
+        except:
+            await user.send(f"⌛ เวลาหมดแล้ว → ยศ `{role.name}` ถูกคืนให้ {sender.mention}")
+
+        # log ตอนหมดเวลา
+        admin_channel = bot.get_channel(ADMIN_CHANNEL_ID)
+        if admin_channel:
+            expire_embed = discord.Embed(
+                title="⌛ ยศหมดเวลา",
+                description=f"ยศ {role.mention} ของ {user.mention} หมดเวลาแล้ว และคืนให้ {sender.mention}",
+                color=0xE67E22,
+                timestamp=datetime.now()
+            )
+            await admin_channel.send(embed=expire_embed)
+
+    except Exception as e:
+        await send_crash_log(str(e))
+
 # ================= คำสั่ง =================
 @tree.command(name="ฝากบอก", description="ฝากข้อความถึงใครบางคน (ไม่เปิดเผยตัวตน)", guild=discord.Object(id=GUILD_ID))
 async def send_message(interaction: discord.Interaction, user: discord.Member, message: str, hint: str = "ไม่มี"):
@@ -157,105 +216,44 @@ async def move_role(interaction: discord.Interaction, user: discord.Member, role
         if interaction.channel.id != ROLE_COMMAND_CHANNEL_ID:
             return await interaction.response.send_message("🚫 ใช้ได้เฉพาะในห้องคำสั่งยศ", ephemeral=True)
 
-        sender = interaction.user  # คนกดคำสั่ง
+        sender = interaction.user
 
-        # ====== ตรวจสอบว่าคนส่งมียศนี้อยู่หรือไม่ ======
         if role not in sender.roles:
             return await interaction.response.send_message(
                 f"❌ คุณไม่มี Role `{role.name}` อยู่ จึงไม่สามารถย้ายได้",
                 ephemeral=True
             )
 
-        # ====== สร้าง Embed สำหรับยืนยัน ======
-        confirm_embed = discord.Embed(
-            title="📋 ยืนยันการย้ายยศ",
-            description=(
-                f"**ผู้ย้าย:** {sender.mention}\n"
-                f"**ผู้รับ:** {user.mention}\n"
-                f"**ยศที่จะย้าย:** {role.mention}\n"
-                f"**ระยะเวลา:** {duration if duration else 'ไม่กำหนด'}\n\n"
-                "โปรดกด ✅ เพื่อยืนยัน หรือ ❌ เพื่อยกเลิก"
-            ),
-            color=0xF1C40F
+        # ย้าย role
+        await sender.remove_roles(role)
+        await user.add_roles(role)
+        await interaction.response.send_message(
+            f"✅ ย้ายยศ `{role.name}` จาก {sender.mention} ไปยัง {user.mention} "
+            f"{'เป็นเวลา ' + duration if duration else '(ถาวร)'}",
+            ephemeral=True
         )
 
-        # ====== View สำหรับปุ่มยืนยัน/ยกเลิก ======
-        class ConfirmView(discord.ui.View):
-            def __init__(self):
-                super().__init__(timeout=30)
-                self.value = None
+        # log การย้าย
+        admin_channel = interaction.guild.get_channel(ADMIN_CHANNEL_ID)
+        if admin_channel:
+            log_embed = discord.Embed(
+                title="📬 มีการย้ายยศ",
+                color=0x3498DB,
+                timestamp=datetime.now()
+            )
+            log_embed.add_field(name="ผู้ย้าย", value=f"{sender.mention}", inline=False)
+            log_embed.add_field(name="ผู้รับ", value=f"{user.mention}", inline=False)
+            log_embed.add_field(name="ยศ", value=f"{role.mention}", inline=False)
+            log_embed.add_field(name="ระยะเวลา", value=duration if duration else "ถาวร", inline=False)
+            await admin_channel.send(embed=log_embed)
 
-            @discord.ui.button(label="✅ ยืนยัน", style=discord.ButtonStyle.success)
-            async def confirm(self, interaction_btn: discord.Interaction, button: discord.ui.Button):
-                if interaction_btn.user.id != sender.id:
-                    return await interaction_btn.response.send_message("❌ คุณไม่ใช่ผู้เรียกคำสั่งนี้", ephemeral=True)
-
-                # ดำเนินการย้ายยศ
-                await sender.remove_roles(role)
-                await user.add_roles(role)
-
-                await interaction_btn.response.edit_message(
-                    content=f"✅ ย้ายยศ `{role.name}` จาก {sender.mention} ไปยัง {user.mention} แล้ว",
-                    embed=None,
-                    view=None
-                )
-
-                # ====== Log ไปยังห้อง ADMIN ======
-                admin_channel = interaction.guild.get_channel(ADMIN_CHANNEL_ID)
-                if admin_channel:
-                    log_embed = discord.Embed(
-                        title="📬 มีการย้ายยศ",
-                        color=0x3498DB,
-                        timestamp=datetime.now()
-                    )
-                    log_embed.add_field(name="ผู้ย้าย", value=f"{sender.mention}", inline=False)
-                    log_embed.add_field(name="ผู้รับ", value=f"{user.mention}", inline=False)
-                    log_embed.add_field(name="ยศ", value=f"{role.mention}", inline=False)
-                    log_embed.add_field(name="ระยะเวลา", value=duration if duration else "ไม่กำหนด", inline=False)
-                    await admin_channel.send(embed=log_embed)
-
-                # ====== ถ้ามีระยะเวลา ======
-                if duration:
-                    time_seconds = 0
-                    if duration.endswith("m"):
-                        time_seconds = int(duration[:-1]) * 60
-                    elif duration.endswith("h"):
-                        time_seconds = int(duration[:-1]) * 3600
-                    else:
-                        return await interaction.followup.send("❌ ระบุเวลาผิด เช่น 10m หรือ 2h", ephemeral=True)
-
-                    async def remove_role_later():
-                        await asyncio.sleep(time_seconds)
-                        await user.remove_roles(role)
-                        await interaction.channel.send(
-                            f"⌛ หมดเวลา {duration} → ยศ `{role.name}` ถูกลบออกจาก {user.mention}"
-                        )
-
-                        # log ตอนหมดเวลา
-                        if admin_channel:
-                            expire_embed = discord.Embed(
-                                title="⌛ ยศหมดเวลา",
-                                description=f"ยศ {role.mention} ของ {user.mention} หมดเวลา {duration}",
-                                color=0xE67E22,
-                                timestamp=datetime.now()
-                            )
-                            await admin_channel.send(embed=expire_embed)
-
-                    bot.loop.create_task(remove_role_later())
-
-                self.value = True
-                self.stop()
-
-            @discord.ui.button(label="❌ ยกเลิก", style=discord.ButtonStyle.danger)
-            async def cancel(self, interaction_btn: discord.Interaction, button: discord.ui.Button):
-                if interaction_btn.user.id != sender.id:
-                    return await interaction_btn.response.send_message("❌ คุณไม่ใช่ผู้เรียกคำสั่งนี้", ephemeral=True)
-                await interaction_btn.response.edit_message(content="❌ การย้ายถูกยกเลิกแล้ว", embed=None, view=None)
-                self.value = False
-                self.stop()
-
-        view = ConfirmView()
-        await interaction.response.send_message(embed=confirm_embed, view=view, ephemeral=True)
+        # ถ้ามีระยะเวลา → เริ่มนับถอยหลัง DM
+        if duration:
+            seconds = parse_duration(duration)
+            if seconds:
+                asyncio.create_task(countdown_role_transfer(user, role, sender, seconds))
+            else:
+                await interaction.followup.send("❌ รูปแบบเวลาไม่ถูกต้อง เช่น 10m หรือ 2h", ephemeral=True)
 
     except Exception as e:
         await send_crash_log(str(e))
@@ -285,8 +283,8 @@ async def on_ready():
 
     try:
         guild = discord.Object(id=GUILD_ID)
-        await tree.sync(guild=guild)   # sync ลง server
-        await tree.sync()              # sync global (กันพลาด)
+        await tree.sync(guild=guild)
+        await tree.sync()
         print("✅ Slash commands synced.")
     except Exception as e:
         print(f"❌ Sync failed: {e}")
